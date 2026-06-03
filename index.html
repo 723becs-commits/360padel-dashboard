@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>360 PADEL · Аналитика</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <style>
+    /* ── Reset ──────────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f1f5f9; color: #1e293b; font-size: 14px; line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Login ──────────────────────────────────────────────────────────────── */
+    #login-screen {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
+    }
+    .login-box {
+      background: #1e293b; border-radius: 20px; padding: 40px 32px;
+      width: 100%; max-width: 340px; text-align: center;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+    }
+    .login-logo { font-size: 26px; font-weight: 900; color: #f1f5f9; letter-spacing: -1px; }
+    .login-logo em { color: #38bdf8; font-style: normal; }
+    .login-tagline { color: #64748b; font-size: 12px; margin: 6px 0 28px; letter-spacing: 1px; text-transform: uppercase; }
+    .login-input {
+      width: 100%; padding: 13px 16px; border-radius: 10px; border: 1.5px solid #334155;
+      background: #0f172a; color: #f1f5f9; font-size: 16px; margin-bottom: 12px;
+      outline: none; text-align: center; letter-spacing: 3px; transition: border-color 0.2s;
+    }
+    .login-input:focus { border-color: #38bdf8; }
+    .login-btn {
+      width: 100%; padding: 13px; background: linear-gradient(135deg, #0ea5e9, #0284c7);
+      color: white; border: none; border-radius: 10px; font-size: 15px;
+      font-weight: 700; cursor: pointer; transition: opacity 0.2s; letter-spacing: 0.5px;
+    }
+    .login-btn:hover { opacity: 0.9; }
+    .login-btn:disabled { opacity: 0.6; cursor: default; }
+    .login-error { color: #f87171; font-size: 12px; margin-top: 10px; min-height: 16px; }
+
+    /* ── Utilities ──────────────────────────────────────────────────────────── */
+    .hidden { display: none !important; }
+
+    /* ── Dashboard layout ───────────────────────────────────────────────────── */
+    #dashboard { max-width: 1100px; margin: 0 auto; padding: 16px; }
+
+    /* ── Header ─────────────────────────────────────────────────────────────── */
+    .header {
+      background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
+      color: #f1f5f9; border-radius: 14px; padding: 16px 20px;
+      margin-bottom: 14px; display: flex; align-items: center;
+      justify-content: space-between; flex-wrap: wrap; gap: 8px;
+    }
+    .header-logo { font-size: 20px; font-weight: 900; letter-spacing: -0.5px; }
+    .header-logo em { color: #38bdf8; font-style: normal; }
+    .header-meta { font-size: 11px; color: #64748b; margin-top: 2px; }
+    .refresh-btn {
+      background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
+      color: #94a3b8; padding: 7px 14px; border-radius: 8px; font-size: 12px;
+      cursor: pointer; transition: all 0.2s; font-weight: 500;
+    }
+    .refresh-btn:hover { background: rgba(255,255,255,0.15); color: #f1f5f9; }
+
+    /* ── Loading ─────────────────────────────────────────────────────────────── */
+    .loading-box {
+      background: white; border-radius: 14px; padding: 48px 20px;
+      text-align: center; margin-bottom: 14px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+    }
+    .spinner {
+      display: inline-block; width: 28px; height: 28px;
+      border: 3px solid #e2e8f0; border-top-color: #0ea5e9;
+      border-radius: 50%; animation: spin 0.7s linear infinite; margin-bottom: 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { color: #64748b; font-size: 13px; }
+
+    /* ── KPI Grid ────────────────────────────────────────────────────────────── */
+    .kpi-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 10px; margin-bottom: 14px;
+    }
+    .kpi-card {
+      background: white; border-radius: 12px; padding: 14px 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07); position: relative; overflow: hidden;
+    }
+    .kpi-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0;
+      height: 3px; background: var(--accent, #0ea5e9);
+    }
+    .kpi-label {
+      font-size: 10px; color: #64748b; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.6px; margin-bottom: 6px;
+    }
+    .kpi-value {
+      font-size: 17px; font-weight: 800; color: #1e293b; line-height: 1.1;
+      letter-spacing: -0.3px;
+    }
+    .kpi-value.accent-green  { color: #059669; }
+    .kpi-value.accent-blue   { color: #0284c7; }
+    .kpi-value.accent-amber  { color: #d97706; }
+    .kpi-sub { font-size: 10px; color: #94a3b8; margin-top: 4px; }
+
+    @media (max-width: 520px) {
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .kpi-value { font-size: 14px; }
+    }
+
+    /* ── Section ─────────────────────────────────────────────────────────────── */
+    .section {
+      background: white; border-radius: 14px; padding: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07); margin-bottom: 14px;
+    }
+    .section-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .section-title {
+      font-size: 13px; font-weight: 700; color: #1e293b;
+      display: flex; align-items: center; gap: 7px;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+    /* ── Two-column layout ───────────────────────────────────────────────────── */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+    @media (max-width: 640px) { .two-col { grid-template-columns: 1fr; } }
+
+    /* ── Filter bar ──────────────────────────────────────────────────────────── */
+    .filter-bar {
+      background: white; border-radius: 14px; padding: 12px 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07); margin-bottom: 14px;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    }
+    .filter-label { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+    .filter-date {
+      padding: 7px 10px; border: 1.5px solid #e2e8f0; border-radius: 8px;
+      font-size: 13px; color: #1e293b; background: #f8fafc; outline: none; transition: border-color 0.2s;
+    }
+    .filter-date:focus { border-color: #0ea5e9; }
+    .filter-sep { color: #cbd5e1; font-size: 12px; }
+    .q-btn {
+      padding: 6px 12px; border-radius: 7px; font-size: 11px; font-weight: 600;
+      border: 1.5px solid #e2e8f0; background: #f8fafc; color: #64748b;
+      cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    }
+    .q-btn:hover, .q-btn.active { background: #0ea5e9; border-color: #0ea5e9; color: white; }
+    .apply-btn {
+      padding: 7px 16px; background: #0ea5e9; color: white;
+      border: none; border-radius: 8px; font-size: 12px; font-weight: 700;
+      cursor: pointer; transition: opacity 0.2s; white-space: nowrap;
+    }
+    .apply-btn:hover { opacity: 0.9; }
+
+    /* ── Charts ──────────────────────────────────────────────────────────────── */
+    .chart-wrap { position: relative; }
+    canvas { max-height: 300px; }
+
+    /* ── Tables ──────────────────────────────────────────────────────────────── */
+    .dtable { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .dtable th {
+      text-align: left; padding: 7px 10px; font-size: 10px; font-weight: 700;
+      color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;
+      border-bottom: 2px solid #f1f5f9;
+    }
+    .dtable td { padding: 8px 10px; border-bottom: 1px solid #f8fafc; }
+    .dtable tr:last-child td { border-bottom: none; }
+    .dtable tr:hover td { background: #f8fafc; }
+    .dtable tr.clickable { cursor: pointer; }
+    .dtable tr.clickable:hover td { background: #eff6ff; }
+    .dtable tr.selected td { background: #dbeafe !important; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .fw7 { font-weight: 700; }
+
+    /* ── Inline bar ──────────────────────────────────────────────────────────── */
+    .ibar {
+      display: inline-block; height: 3px; border-radius: 2px;
+      vertical-align: middle; margin-left: 6px; max-width: 80px;
+    }
+
+    /* ── Heatmap ─────────────────────────────────────────────────────────────── */
+    .heatmap-scroll { overflow-x: auto; }
+    .heatmap { border-collapse: separate; border-spacing: 2px; width: 100%; min-width: 280px; }
+    .heatmap th {
+      font-size: 10px; font-weight: 700; color: #64748b; text-align: center; padding: 2px 4px;
+    }
+    .hm-label { font-size: 9px; color: #94a3b8; text-align: right; padding-right: 6px; white-space: nowrap; }
+    .hm-cell {
+      height: 24px; border-radius: 4px; text-align: center; font-size: 9px;
+      font-weight: 700; transition: transform 0.1s; cursor: default; padding: 0 2px;
+      vertical-align: middle; line-height: 24px; white-space: nowrap; overflow: hidden;
+    }
+    .hm-cell:hover { transform: scale(1.15); z-index: 1; position: relative; }
+
+    /* ── Coach detail ────────────────────────────────────────────────────────── */
+    .coach-detail {
+      display: none; background: #f8fafc; border-radius: 10px;
+      padding: 14px; margin-top: 14px;
+    }
+    .coach-detail.open { display: block; }
+    .coach-detail-name {
+      font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 12px;
+    }
+    .coach-pie-wrap { max-width: 280px; margin: 0 auto; }
+
+    /* ── Section divider label ───────────────────────────────────────────────── */
+    .block-label {
+      font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase;
+      letter-spacing: 1px; margin: 18px 0 10px; padding-left: 4px;
+    }
+    /* ── Active period badge ─────────────────────────────────────────────────── */
+    .period-badge {
+      background: #eff6ff; color: #1d4ed8; border-radius: 6px;
+      padding: 4px 10px; font-size: 11px; font-weight: 700; white-space: nowrap;
+    }
+    /* ── Section subtitle (period) ───────────────────────────────────────────── */
+    .section-period {
+      font-size: 10px; color: #94a3b8; font-weight: 500; margin-left: 4px;
+    }
+    /* ── Error banner ────────────────────────────────────────────────────────── */
+    .error-banner {
+      background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px;
+      padding: 12px 16px; color: #b91c1c; font-size: 12px;
+      margin-bottom: 14px; display: none;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════ LOGIN ══════════════════════════════════ -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">360 <em>PADEL</em></div>
+    <div class="login-tagline">Аналитика продаж</div>
+    <input id="key-input" type="password" class="login-input"
+           placeholder="••••••••" autocomplete="current-password"
+           onkeydown="if(event.key==='Enter') doLogin()">
+    <button class="login-btn" id="login-btn" onclick="doLogin()">Войти</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<!-- ═════════════════════════════════ DASHBOARD ═══════════════════════════════ -->
+<div id="dashboard" class="hidden">
+
+  <!-- Header -->
+  <div class="header">
+    <div>
+      <div class="header-logo">360 <em>PADEL</em> · Аналитика</div>
+      <div class="header-meta" id="update-ts">Загрузка...</div>
+    </div>
+    <button class="refresh-btn" onclick="loadData()">↻ Обновить</button>
+  </div>
+
+  <!-- Loading indicator -->
+  <div id="loading-box" class="loading-box">
+    <div class="spinner"></div>
+    <div class="loading-text">Загружаем данные из Google Таблицы...</div>
+  </div>
+
+  <!-- Main content -->
+  <div id="content" class="hidden">
+
+    <!-- ─────────────── KPI: Выручка ─────────────── -->
+    <p class="block-label">Выручка</p>
+    <div class="kpi-grid">
+      <div class="kpi-card" style="--accent:#0ea5e9">
+        <div class="kpi-label">Вчера</div>
+        <div class="kpi-value" id="rev-yd">—</div>
+        <div class="kpi-sub" id="rev-yd-sub"></div>
+      </div>
+      <div class="kpi-card" style="--accent:#0ea5e9">
+        <div class="kpi-label">Текущая неделя</div>
+        <div class="kpi-value" id="rev-wk">—</div>
+        <div class="kpi-sub" id="rev-wk-sub"></div>
+      </div>
+      <div class="kpi-card" style="--accent:#0ea5e9">
+        <div class="kpi-label">Текущий месяц</div>
+        <div class="kpi-value" id="rev-mo">—</div>
+        <div class="kpi-sub" id="rev-mo-sub"></div>
+      </div>
+    </div>
+
+    <!-- ─────────────── KPI: Утилизация ─────────────── -->
+    <p class="block-label">Утилизация кортов <span style="font-weight:400;color:#94a3b8">(12 кортов)</span></p>
+    <div class="kpi-grid">
+      <div class="kpi-card" style="--accent:#059669">
+        <div class="kpi-label">Вчера</div>
+        <div class="kpi-value accent-green" id="util-yd">—</div>
+        <div class="kpi-sub" id="util-yd-sub"></div>
+      </div>
+      <div class="kpi-card" style="--accent:#059669">
+        <div class="kpi-label">Текущая неделя</div>
+        <div class="kpi-value accent-green" id="util-wk">—</div>
+        <div class="kpi-sub" id="util-wk-sub"></div>
+      </div>
+      <div class="kpi-card" style="--accent:#059669">
+        <div class="kpi-label">Текущий месяц</div>
+        <div class="kpi-value accent-green" id="util-mo">—</div>
+        <div class="kpi-sub" id="util-mo-sub"></div>
+      </div>
+    </div>
+
+    <!-- ─────────────── KPI: Центральный корт ─────────────── -->
+    <p class="block-label">Центральный корт <span style="font-weight:400;color:#94a3b8">(загрузка)</span></p>
+    <div class="kpi-grid">
+      <div class="kpi-card" style="--accent:#f97316">
+        <div class="kpi-label">Вчера</div>
+        <div class="kpi-value" style="color:#f97316" id="center-yd">—</div>
+        <div class="kpi-sub" id="center-yd-sub"></div>
+      </div>
+      <div class="kpi-card" style="--accent:#f97316">
+        <div class="kpi-label">Текущая неделя</div>
+        <div class="kpi-value" style="color:#f97316" id="center-wk">—</div>
+        <div class="kpi-sub" id="center-wk-sub"></div>
+      </div>
+      <div class="kpi-card" style="--accent:#f97316">
+        <div class="kpi-label">Текущий месяц</div>
+        <div class="kpi-value" style="color:#f97316" id="center-mo">—</div>
+        <div class="kpi-sub" id="center-mo-sub"></div>
+      </div>
+    </div>
+
+    <!-- ─────────────── Error banner ─────────────── -->
+    <div class="error-banner" id="error-banner"></div>
+
+    <!-- ─────────────── KPI за выбранный период ─────────────── -->
+    <p class="block-label" id="period-kpi-label" style="display:none">За выбранный период</p>
+    <div class="kpi-grid" id="period-kpi-grid" style="display:none; grid-template-columns: repeat(2,1fr)">
+      <div class="kpi-card" style="--accent:#3b82f6">
+        <div class="kpi-label">Выручка за период</div>
+        <div class="kpi-value" id="pkpi-rev">—</div>
+        <div class="kpi-sub" id="pkpi-rev-sub"></div>
+      </div>
+      <div class="kpi-card" style="--accent:#059669">
+        <div class="kpi-label">Утилизация (12 кортов)</div>
+        <div class="kpi-value accent-green" id="pkpi-util">—</div>
+        <div class="kpi-sub" id="pkpi-util-sub"></div>
+      </div>
+      <div class="kpi-card" style="--accent:#f97316">
+        <div class="kpi-label">Центральный корт</div>
+        <div class="kpi-value" style="color:#f97316" id="pkpi-center">—</div>
+        <div class="kpi-sub" id="pkpi-center-sub"></div>
+      </div>
+      <div class="kpi-card" style="--accent:#0284c7">
+        <div class="kpi-label">RevPASH</div>
+        <div class="kpi-value accent-blue" id="pkpi-revpash">—</div>
+        <div class="kpi-sub">выручка / корто-час</div>
+      </div>
+    </div>
+
+    <!-- ─────────────── Фильтр периода ─────────────── -->
+    <div class="filter-bar">
+      <span class="filter-label">Период</span>
+      <input type="date" id="f-from" class="filter-date">
+      <span class="filter-sep">—</span>
+      <input type="date" id="f-to" class="filter-date">
+      <button class="apply-btn" onclick="applyFilter()">Применить</button>
+      <button class="q-btn" onclick="setQuick('month')">Этот месяц</button>
+      <button class="q-btn" onclick="setQuick('lmonth')">Прошлый месяц</button>
+      <button class="q-btn" onclick="setQuick('all')">Весь период</button>
+      <span class="period-badge" id="active-period" style="display:none"></span>
+    </div>
+
+    <!-- ─────────────── Выручка по месяцам ─────────────── -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="dot" style="background:#3b82f6"></span>Выручка по месяцам
+          <span class="section-period" id="lbl-monthly"></span>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="c-monthly"></canvas></div>
+    </div>
+
+    <!-- ─────────────── Структура + разбивка ─────────────── -->
+    <div class="two-col">
+      <div class="section">
+        <div class="section-title">
+          <span class="dot" style="background:#10b981"></span>Структура выручки
+          <span class="section-period" id="lbl-structure"></span>
+        </div>
+        <div style="margin-top:12px"><canvas id="c-structure" style="max-height:240px"></canvas></div>
+      </div>
+      <div class="section">
+        <div class="section-title">
+          <span class="dot" style="background:#f59e0b"></span>Разбивка по услугам
+          <span class="section-period" id="lbl-breakdown"></span>
+        </div>
+        <div style="margin-top:12px" id="structure-table"></div>
+      </div>
+    </div>
+
+    <!-- ─────────────── Аналитика кортов ─────────────── -->
+    <div class="section">
+      <div class="section-title">
+        <span class="dot" style="background:#6366f1"></span>Аренда по типу корта
+        <span class="section-period" id="lbl-courts"></span>
+      </div>
+      <div style="margin-top:12px" class="chart-wrap"><canvas id="c-court-types"></canvas></div>
+    </div>
+
+    <!-- ─────────────── Тепловая карта ─────────────── -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="dot" style="background:#f97316"></span>Тепловая карта выручки
+          <span class="section-period" id="lbl-heatmap"></span>
+        </div>
+        <span style="font-size:10px;color:#94a3b8">час × день недели</span>
+      </div>
+      <div class="heatmap-scroll" id="heatmap-wrap"></div>
+    </div>
+
+    <!-- ─────────────── Выручка по дням недели ─────────────── -->
+    <div class="section">
+      <div class="section-title">
+        <span class="dot" style="background:#ec4899"></span>Выручка по дням недели
+        <span class="section-period" id="lbl-weekday"></span>
+      </div>
+      <div style="margin-top:12px" class="chart-wrap"><canvas id="c-weekday"></canvas></div>
+    </div>
+
+    <!-- ─────────────── Тренеры ─────────────── -->
+    <div class="section">
+      <div class="section-title">
+        <span class="dot" style="background:#0ea5e9"></span>Тренеры
+        <span class="section-period" id="lbl-coaches"></span>
+      </div>
+      <div style="margin-top:12px" id="coach-table-wrap"></div>
+      <div style="margin-top:16px" class="chart-wrap">
+        <canvas id="c-coach-bar" style="max-height:220px"></canvas>
+      </div>
+      <div class="coach-detail" id="coach-detail">
+        <div class="coach-detail-name" id="coach-detail-name"></div>
+        <div class="coach-pie-wrap"><canvas id="c-coach-pie" style="max-height:240px"></canvas></div>
+      </div>
+    </div>
+
+    <!-- ─────────────── Эффективность ─────────────── -->
+    <p class="block-label">Эффективность · за выбранный период</p>
+    <div class="kpi-grid" style="margin-bottom:32px">
+      <div class="kpi-card" style="--accent:#0284c7">
+        <div class="kpi-label">RevPASH</div>
+        <div class="kpi-value accent-blue" id="kpi-revpash">—</div>
+        <div class="kpi-sub">выручка / корто-час</div>
+      </div>
+      <div class="kpi-card" style="--accent:#0284c7">
+        <div class="kpi-label">Средний чек</div>
+        <div class="kpi-value accent-blue" id="kpi-avgcheck">—</div>
+        <div class="kpi-sub" id="kpi-avgcheck-sub"></div>
+      </div>
+      <div class="kpi-card" style="--accent:#d97706">
+        <div class="kpi-label">Пиковые часы (18:00+)</div>
+        <div class="kpi-value accent-amber" id="kpi-peak">—</div>
+        <div class="kpi-sub" id="kpi-peak-sub"></div>
+      </div>
+    </div>
+
+  </div><!-- #content -->
+</div><!-- #dashboard -->
+
+<script>
+// ════════════════════════════════════════════════════════════════════════════
+// CONFIG
+// ════════════════════════════════════════════════════════════════════════════
+const GAS_URL    = 'https://script.google.com/macros/s/AKfycbyqhyvdxAV4C86JbLW32n6neh7fVo5_IFdlnlZyDA1cs4flk9F23Qrx0FHPr74x4puiNw/exec';
+const COURTS     = 12; // без центрального корта
+const WORK_HRS   = 16;  // 07:00–23:00
+const HOUR_START = 7;
+
+const CAT_LABEL = {
+  court: 'Аренда кортов', training: 'Тренировки',
+  tournament: 'Турниры',  inventory: 'Инвентарь',
+};
+const SUB_LABEL = {
+  ultra: 'Ультрапанорамный', pano: 'Панорамный', single: 'Сингл', center: 'Центральный',
+  t_ind: 'Персональная', t_pair: 'Парная', t_split3: 'Сплит 3',
+  t_split4: 'Сплит 4', t_group: 'Групповая (новички)', t_trial: 'Пробное занятие',
+  club: 'Клубный турнир', ext: 'Внешний турнир', inv_1c: 'Инвентарь',
+};
+const DAY_NAMES = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+
+const CAT_CLR  = { court:'#3b82f6', training:'#10b981', tournament:'#f59e0b', inventory:'#8b5cf6' };
+const COURT_CLR = { ultra:'#0ea5e9', pano:'#6366f1', single:'#ec4899', center:'#f97316' };
+const TRAIN_TYPES = ['t_ind','t_pair','t_split3','t_split4','t_group','t_trial'];
+const TRAIN_CLR   = ['#10b981','#34d399','#6ee7b7','#0ea5e9','#a78bfa','#f59e0b'];
+
+// ════════════════════════════════════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════════════════════════════════════
+let allRows = [];
+let charts  = {};
+let authKey = '';
+
+// ════════════════════════════════════════════════════════════════════════════
+// DATE HELPERS
+// ════════════════════════════════════════════════════════════════════════════
+const todayStr = () => new Date().toISOString().slice(0, 10);
+
+function addDays(d, n) {
+  const dt = new Date(d + 'T12:00:00');
+  dt.setDate(dt.getDate() + n);
+  return dt.toISOString().slice(0, 10);
+}
+
+function weekStartStr() {
+  const d = new Date();
+  d.setDate(d.getDate() - (d.getDay() + 6) % 7);
+  return d.toISOString().slice(0, 10);
+}
+
+function monthStartStr(offset = 0) {
+  const d = new Date();
+  d.setMonth(d.getMonth() + offset, 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function monthEndStr(offset = 0) {
+  const d = new Date();
+  d.setMonth(d.getMonth() + offset + 1, 0);
+  return d.toISOString().slice(0, 10);
+}
+
+function fmtMoney(n) {
+  return Math.round(n).toLocaleString('ru-RU') + ' ₽';
+}
+
+function fmtK(n) {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + ' М₽';
+  if (n >= 10_000)    return (n / 1_000).toFixed(0) + ' К₽';
+  if (n >= 1_000)     return (n / 1_000).toFixed(1) + ' К₽';
+  return Math.round(n) + ' ₽';
+}
+
+function fmtPct(n) { return (Math.round(n * 10) / 10) + '%'; }
+
+// ════════════════════════════════════════════════════════════════════════════
+// AUTH + FETCH
+// ════════════════════════════════════════════════════════════════════════════
+async function doLogin() {
+  const key = document.getElementById('key-input').value.trim();
+  if (!key) return;
+  const btn = document.getElementById('login-btn');
+  btn.disabled = true; btn.textContent = 'Подключение...';
+  setEl('login-error', '');
+  try {
+    const data = await fetchRaw(key);
+    if (data.error === 'unauthorized') {
+      setEl('login-error', 'Неверный пароль');
+      btn.disabled = false; btn.textContent = 'Войти';
+      return;
+    }
+    authKey = key;
+    sessionStorage.setItem('dashKey', key);
+    allRows = data.rows || [];
+    openDashboard(data.ts);
+  } catch (e) {
+    setEl('login-error', 'Ошибка соединения: ' + e.message);
+    btn.disabled = false; btn.textContent = 'Войти';
+  }
+}
+
+async function loadData() {
+  show('loading-box'); hide('content');
+  hideBanner();
+  try {
+    const data = await fetchRaw(authKey);
+
+    if (data.error === 'unauthorized') {
+      showBanner('Неверный пароль. Обновите страницу и войдите заново.');
+      return;
+    }
+    if (!data.rows) {
+      showBanner('Данные не получены. Возможно, GAS не задеплоен с новым кодом. ' +
+                 'Проверьте: в Google Apps Script должна быть функция getRawData и сделан новый деплой.');
+      allRows = [];
+      renderAll();
+      return;
+    }
+
+    allRows = data.rows;
+    setEl('update-ts', 'Обновлено: ' + fmtTs(data.ts));
+
+    // Гарантируем, что даты установлены перед рендером
+    if (!document.getElementById('f-from').value) {
+      document.getElementById('f-from').value = monthStartStr(0);
+      document.getElementById('f-to').value   = todayStr();
+    }
+    renderAll();
+
+  } catch (e) {
+    showBanner('Ошибка загрузки данных: ' + e.message +
+               '. Проверьте URL в GAS и наличие нового деплоя.');
+  } finally {
+    hide('loading-box'); show('content');
+  }
+}
+
+function showBanner(msg) {
+  const el = document.getElementById('error-banner');
+  if (!el) return;
+  el.textContent = '⚠️ ' + msg;
+  el.style.display = 'block';
+}
+function hideBanner() {
+  const el = document.getElementById('error-banner');
+  if (el) el.style.display = 'none';
+}
+
+async function fetchRaw(key) {
+  const resp = await fetch(GAS_URL + '?action=rawdata&key=' + encodeURIComponent(key));
+  if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  return resp.json();
+}
+
+function openDashboard(ts) {
+  hide('login-screen'); show('dashboard');
+  hide('loading-box');  show('content');
+  setEl('update-ts', 'Обновлено: ' + fmtTs(ts));
+  document.getElementById('f-from').value = monthStartStr(0);
+  document.getElementById('f-to').value   = todayStr();
+  renderAll();
+}
+
+function fmtTs(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  return d.toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// DOM HELPERS
+// ════════════════════════════════════════════════════════════════════════════
+function setEl(id, val)  { const e = document.getElementById(id); if (e) e.textContent = val; }
+function show(id)        { document.getElementById(id)?.classList.remove('hidden'); }
+function hide(id)        { document.getElementById(id)?.classList.add('hidden'); }
+
+// ════════════════════════════════════════════════════════════════════════════
+// FILTER
+// ════════════════════════════════════════════════════════════════════════════
+function filterRows(from, to) { return allRows.filter(r => r.date >= from && r.date <= to); }
+
+function applyFilter() {
+  const from = document.getElementById('f-from').value;
+  const to   = document.getElementById('f-to').value;
+  if (!from || !to || from > to) {
+    alert('Укажите корректный период'); return;
+  }
+  // Обновляем бейдж активного периода
+  const badge = document.getElementById('active-period');
+  if (badge) {
+    badge.textContent = fmtDateRu(from) + ' — ' + fmtDateRu(to);
+    badge.style.display = 'inline-block';
+  }
+  renderFiltered(from, to);
+}
+
+function fmtDateRu(d) {
+  if (!d) return '';
+  const [y, m, day] = d.split('-');
+  return day + '.' + m + '.' + y;
+}
+
+function setPeriodLabels(from, to) {
+  const label = '· ' + fmtDateRu(from) + ' — ' + fmtDateRu(to);
+  ['lbl-monthly','lbl-structure','lbl-breakdown','lbl-courts','lbl-heatmap','lbl-weekday','lbl-coaches'].forEach(id => {
+    setEl(id, label);
+  });
+}
+
+function setQuick(type) {
+  let from, to;
+  if (type === 'month')  { from = monthStartStr(0);  to = todayStr(); }
+  if (type === 'lmonth') { from = monthStartStr(-1);  to = monthEndStr(-1); }
+  if (type === 'all') {
+    const dates = allRows.map(r => r.date).filter(Boolean).sort();
+    from = dates[0] || monthStartStr(0);
+    to   = todayStr();
+  }
+  document.getElementById('f-from').value = from;
+  document.getElementById('f-to').value   = to;
+  applyFilter();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// RENDER ALL
+// ════════════════════════════════════════════════════════════════════════════
+function renderAll() {
+  renderKPIs();
+  applyFilter(); // renderMonthly вызывается внутри renderFiltered
+}
+
+function renderFiltered(from, to) {
+  setPeriodLabels(from, to);
+  const rows = filterRows(from, to);
+
+  // KPI за период — сразу под фильтром
+  renderPeriodKPIs(rows, from, to);
+
+  // Все графики используют отфильтрованные данные
+  try { renderMonthly(rows); }      catch(e) { console.error('renderMonthly', e); }
+  try { renderStructure(rows); }    catch(e) { console.error('renderStructure', e); }
+  try { renderCourtTypes(rows); }   catch(e) { console.error('renderCourtTypes', e); }
+  try { renderHeatmap(rows); }      catch(e) { console.error('renderHeatmap', e); }
+  try { renderWeekday(rows); }      catch(e) { console.error('renderWeekday', e); }
+  try { renderCoaches(rows); }      catch(e) { console.error('renderCoaches', e); }
+  try { renderEfficiency(rows, from, to); } catch(e) { console.error('renderEfficiency', e); }
+}
+
+function renderPeriodKPIs(rows, from, to) {
+  const total = sumRev(rows);
+  const util  = calcUtil(rows, from, to);
+  const center = calcCenterUtil(rows, from, to);
+  const revpash = util.avail > 0 ? total / util.avail : 0;
+  const cnt   = rows.filter(r => r.category !== 'inventory').length;
+
+  setEl('pkpi-rev',         fmtMoney(total));
+  setEl('pkpi-rev-sub',     cnt + ' бронирований');
+  setEl('pkpi-util',        fmtPct(util.pct));
+  setEl('pkpi-util-sub',    util.used + ' / ' + util.avail + ' корто-ч');
+  setEl('pkpi-center',      fmtPct(center.pct));
+  setEl('pkpi-center-sub',  center.used + ' / ' + center.avail + ' корто-ч');
+  setEl('pkpi-revpash',     fmtMoney(revpash));
+
+  // Показываем блок только когда данные есть
+  const grid  = document.getElementById('period-kpi-grid');
+  const label = document.getElementById('period-kpi-label');
+  if (grid)  grid.style.display  = 'grid';
+  if (label) label.style.display = 'block';
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// KPI CARDS (фиксированные периоды — не зависят от фильтра)
+// ════════════════════════════════════════════════════════════════════════════
+function renderKPIs() {
+  const td = todayStr();
+  const yd = addDays(td, -1);
+  const ws = weekStartStr();
+  const ms = monthStartStr(0);
+
+  // Revenue
+  setEl('rev-yd', fmtMoney(sumRev(filterRows(yd, yd))));
+  setEl('rev-wk', fmtMoney(sumRev(filterRows(ws, td))));
+  setEl('rev-mo', fmtMoney(sumRev(filterRows(ms, td))));
+
+  const cntYd = filterRows(yd, yd).filter(r => r.category !== 'inventory').length;
+  const cntWk = filterRows(ws, td).filter(r => r.category !== 'inventory').length;
+  const cntMo = filterRows(ms, td).filter(r => r.category !== 'inventory').length;
+  setEl('rev-yd-sub', cntYd + ' бронирований');
+  setEl('rev-wk-sub', cntWk + ' бронирований');
+  setEl('rev-mo-sub', cntMo + ' бронирований');
+
+  // Utilization (12 courts)
+  const uYd = calcUtil(filterRows(yd, yd), yd, yd);
+  const uWk = calcUtil(filterRows(ws, td), ws, td);
+  const uMo = calcUtil(filterRows(ms, td), ms, td);
+
+  setEl('util-yd', fmtPct(uYd.pct));
+  setEl('util-yd-sub', uYd.used + ' / ' + uYd.avail + ' корто-ч');
+  setEl('util-wk', fmtPct(uWk.pct));
+  setEl('util-wk-sub', uWk.used + ' / ' + uWk.avail + ' корто-ч');
+  setEl('util-mo', fmtPct(uMo.pct));
+  setEl('util-mo-sub', uMo.used + ' / ' + uMo.avail + ' корто-ч');
+
+  // Центральный корт
+  const cYd = calcCenterUtil(filterRows(yd, yd), yd, yd);
+  const cWk = calcCenterUtil(filterRows(ws, td), ws, td);
+  const cMo = calcCenterUtil(filterRows(ms, td), ms, td);
+
+  setEl('center-yd', fmtPct(cYd.pct));
+  setEl('center-yd-sub', cYd.used + ' / ' + cYd.avail + ' корто-ч');
+  setEl('center-wk', fmtPct(cWk.pct));
+  setEl('center-wk-sub', cWk.used + ' / ' + cWk.avail + ' корто-ч');
+  setEl('center-mo', fmtPct(cMo.pct));
+  setEl('center-mo-sub', cMo.used + ' / ' + cMo.avail + ' корто-ч');
+}
+
+function sumRev(rows) { return rows.reduce((s, r) => s + r.sum, 0); }
+
+function calcUtil(rows, from, to) {
+  const days  = Math.round((new Date(to + 'T12:00:00') - new Date(from + 'T12:00:00')) / 86400000) + 1;
+  const avail = COURTS * WORK_HRS * days;
+  const used  = rows.filter(r => r.category !== 'inventory' && r.subType !== 'center').reduce((s, r) => s + r.duration, 0);
+  return {
+    pct:   avail > 0 ? (used / avail * 100) : 0,
+    used:  Math.round(used * 10) / 10,
+    avail,
+  };
+}
+
+function calcCenterUtil(rows, from, to) {
+  const days  = Math.round((new Date(to + 'T12:00:00') - new Date(from + 'T12:00:00')) / 86400000) + 1;
+  const avail = WORK_HRS * days; // 1 корт
+  const used  = rows.filter(r => r.subType === 'center').reduce((s, r) => s + r.duration, 0);
+  return {
+    pct:   avail > 0 ? (used / avail * 100) : 0,
+    used:  Math.round(used * 10) / 10,
+    avail,
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// MONTHLY TREND — стековая гистограмма по выбранному периоду
+// ════════════════════════════════════════════════════════════════════════════
+function renderMonthly(rows) {
+  const src = rows || allRows;
+  const map = {};
+  src.forEach(r => {
+    const m = r.date.slice(0, 7);
+    if (!map[m]) map[m] = { court: 0, training: 0, tournament: 0, inventory: 0 };
+    map[m][r.category] = (map[m][r.category] || 0) + r.sum;
+  });
+
+  const months = Object.keys(map).sort();
+  const MNAMES = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+  const fmtLabel = m => {
+    const [y, mo] = m.split('-');
+    return MNAMES[parseInt(mo, 10) - 1] + ' ' + y.slice(2);
+  };
+
+  const datasets = ['court','training','tournament','inventory'].map(cat => ({
+    label: CAT_LABEL[cat],
+    data:  months.map(m => Math.round(map[m][cat] || 0)),
+    backgroundColor: CAT_CLR[cat],
+    borderRadius: 4,
+    borderSkipped: false,
+  }));
+
+  mkChart('c-monthly', 'bar', months.map(fmtLabel), datasets, {
+    scales: {
+      x: { stacked: true, grid: { display: false } },
+      y: { stacked: true, ticks: { callback: v => fmtK(v) } },
+    },
+    plugins: {
+      legend: { position: 'bottom' },
+      tooltip: { callbacks: {
+        footer: items => {
+          const total = items.reduce((s, i) => s + i.raw, 0);
+          return 'Итого: ' + fmtMoney(total);
+        }
+      }},
+    },
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// STRUCTURE — пончик + таблица
+// ════════════════════════════════════════════════════════════════════════════
+function renderStructure(rows) {
+  const catTotals = {};
+  const subTotals = {};
+
+  rows.forEach(r => {
+    catTotals[r.category] = (catTotals[r.category] || 0) + r.sum;
+    const key = r.category + '§' + r.subType;
+    if (!subTotals[key]) subTotals[key] = { cat: r.category, sub: r.subType, sum: 0, cnt: 0 };
+    subTotals[key].sum += r.sum;
+    subTotals[key].cnt++;
+  });
+
+  const total = Object.values(catTotals).reduce((s, v) => s + v, 0);
+  const cats  = Object.keys(catTotals).filter(c => catTotals[c] > 0);
+
+  mkChart('c-structure', 'doughnut',
+    cats.map(c => CAT_LABEL[c]),
+    [{ data: cats.map(c => Math.round(catTotals[c])), backgroundColor: cats.map(c => CAT_CLR[c]), hoverOffset: 8, borderWidth: 2 }],
+    {
+      cutout: '62%',
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: { callbacks: { label: ctx => ' ' + fmtMoney(ctx.raw) + ' · ' + Math.round(ctx.raw / total * 100) + '%' } },
+      },
+    }
+  );
+
+  const items = Object.values(subTotals).sort((a, b) => b.sum - a.sum);
+  const maxS  = items[0]?.sum || 1;
+
+  let html = '<table class="dtable"><thead><tr><th>Услуга</th><th class="num">₽</th><th class="num">%</th></tr></thead><tbody>';
+  items.forEach(it => {
+    const lbl = SUB_LABEL[it.sub] || it.sub;
+    const pct = total > 0 ? Math.round(it.sum / total * 100) : 0;
+    const bw  = Math.round(it.sum / maxS * 60);
+    html += `<tr>
+      <td>${lbl}<span class="ibar" style="width:${bw}px;background:${CAT_CLR[it.cat]}"></span></td>
+      <td class="num fw7">${fmtMoney(it.sum)}</td>
+      <td class="num" style="color:#94a3b8">${pct}%</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('structure-table').innerHTML = html;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// COURT TYPES — горизонтальные бары
+// ════════════════════════════════════════════════════════════════════════════
+function renderCourtTypes(rows) {
+  const courts = rows.filter(r => r.category === 'court');
+  const types  = ['ultra', 'pano', 'single', 'center'];
+
+  const rev = types.map(t => Math.round(courts.filter(r => r.subType === t).reduce((s, r) => s + r.sum, 0)));
+  const hrs = types.map(t => Math.round(courts.filter(r => r.subType === t).reduce((s, r) => s + r.duration, 0) * 10) / 10);
+
+  mkChart('c-court-types', 'bar', types.map(t => SUB_LABEL[t]),
+    [{ label: 'Выручка', data: rev, backgroundColor: types.map(t => COURT_CLR[t]), borderRadius: 6 }],
+    {
+      indexAxis: 'y',
+      scales: {
+        x: { ticks: { callback: v => fmtK(v) } },
+        y: { grid: { display: false } },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ' ' + fmtMoney(ctx.raw) + '  ·  ' + hrs[ctx.dataIndex] + ' ч' } },
+      },
+    }
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// HEATMAP — час × день недели
+// ════════════════════════════════════════════════════════════════════════════
+function renderHeatmap(rows) {
+  const grid = {};
+  for (let h = HOUR_START; h < HOUR_START + WORK_HRS; h++) {
+    grid[h] = Array.from({ length: 7 }, () => ({ sum: 0, cnt: 0 }));
+  }
+
+  rows.forEach(r => {
+    if (r.category === 'inventory' || !r.time) return;
+    const h = parseInt(r.time.split(':')[0], 10);
+    if (h < HOUR_START || h >= HOUR_START + WORK_HRS) return;
+    const dow = (new Date(r.date + 'T12:00:00').getDay() + 6) % 7;
+    grid[h][dow].sum += r.sum;
+    grid[h][dow].cnt++;
+  });
+
+  let maxSum = 0;
+  for (let h = HOUR_START; h < HOUR_START + WORK_HRS; h++) {
+    for (let d = 0; d < 7; d++) maxSum = Math.max(maxSum, grid[h][d].sum);
+  }
+
+  let html = '<table class="heatmap"><thead><tr><th style="width:34px"></th>';
+  DAY_NAMES.forEach(d => html += `<th>${d}</th>`);
+  html += '</tr></thead><tbody>';
+
+  for (let h = HOUR_START; h < HOUR_START + WORK_HRS; h++) {
+    html += `<tr><td class="hm-label">${String(h).padStart(2, '0')}:00</td>`;
+    for (let d = 0; d < 7; d++) {
+      const { sum } = grid[h][d];
+      const t   = maxSum > 0 ? sum / maxSum : 0;
+      const bg  = heatColor(t);
+      const txt = t > 0.45 ? '#fff' : (t > 0.05 ? '#1e293b' : '#cbd5e1');
+      const lbl = sum > 0 ? fmtK(sum) : '';
+      html += `<td class="hm-cell" style="background:${bg};color:${txt}" title="${sum > 0 ? fmtMoney(sum) : '—'}">${lbl}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  document.getElementById('heatmap-wrap').innerHTML = html;
+}
+
+function heatColor(t) {
+  if (t <= 0.02) return '#f1f5f9';
+  const r = Math.round(220 - t * 196);
+  const g = Math.round(252 - t * 141);
+  const b = Math.round(231 - t * 199);
+  return `rgb(${r},${g},${b})`;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// WEEKDAY — бары по дням недели
+// ════════════════════════════════════════════════════════════════════════════
+function renderWeekday(rows) {
+  const byDay = Array(7).fill(0);
+  rows.forEach(r => {
+    const dow = (new Date(r.date + 'T12:00:00').getDay() + 6) % 7;
+    byDay[dow] += r.sum;
+  });
+
+  const colors = byDay.map((_, i) => i >= 5 ? '#f59e0b' : '#3b82f6');
+
+  mkChart('c-weekday', 'bar', DAY_NAMES,
+    [{ label: 'Выручка', data: byDay.map(Math.round), backgroundColor: colors, borderRadius: 6 }],
+    {
+      scales: { x: { grid: { display: false } }, y: { ticks: { callback: v => fmtK(v) } } },
+      plugins: { legend: { display: false } },
+    }
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// COACHES — таблица + стек + пончик по клику
+// ════════════════════════════════════════════════════════════════════════════
+function renderCoaches(rows) {
+  const trainRows = rows.filter(r => r.category === 'training');
+  const byCoach   = {};
+
+  trainRows.forEach(r => {
+    const name = r.coach || 'Не указан';
+    if (!byCoach[name]) byCoach[name] = { sum: 0, cnt: 0, types: {} };
+    byCoach[name].sum += r.sum;
+    byCoach[name].cnt++;
+    byCoach[name].types[r.subType] = (byCoach[name].types[r.subType] || 0) + 1;
+  });
+
+  const sorted = Object.entries(byCoach).sort((a, b) => b[1].sum - a[1].sum);
+  const maxRev = sorted[0]?.[1].sum || 1;
+
+  // Table
+  let html = '<table class="dtable"><thead><tr><th>#</th><th>Тренер</th><th class="num">Занятий</th><th class="num">Выручка</th><th class="num">Ср. чек</th></tr></thead><tbody>';
+  sorted.forEach(([name, d], i) => {
+    const avg = d.cnt > 0 ? d.sum / d.cnt : 0;
+    const bw  = Math.round(d.sum / maxRev * 72);
+    const esc = name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    html += `<tr class="clickable" onclick="showCoachDetail('${esc}')">
+      <td style="color:#94a3b8;font-size:11px">${i + 1}</td>
+      <td><b>${name}</b><span class="ibar" style="width:${bw}px;background:#0ea5e9"></span></td>
+      <td class="num">${d.cnt}</td>
+      <td class="num fw7">${fmtMoney(d.sum)}</td>
+      <td class="num" style="color:#64748b">${fmtMoney(avg)}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('coach-table-wrap').innerHTML = html;
+
+  // Stacked bar
+  const names    = sorted.map(([n]) => n);
+  const datasets = TRAIN_TYPES.map((t, ti) => ({
+    label: SUB_LABEL[t],
+    data:  names.map(n => byCoach[n]?.types[t] || 0),
+    backgroundColor: TRAIN_CLR[ti],
+    borderRadius: 3,
+    borderSkipped: false,
+  }));
+
+  mkChart('c-coach-bar', 'bar', names, datasets, {
+    scales: {
+      x: { stacked: true, grid: { display: false }, ticks: { maxRotation: 30 } },
+      y: { stacked: true, ticks: { callback: v => Number.isInteger(v) ? v : '' } },
+    },
+    plugins: { legend: { position: 'bottom' } },
+  });
+
+  window._coachData = byCoach;
+  document.getElementById('coach-detail').classList.remove('open');
+}
+
+function showCoachDetail(name) {
+  // Highlight row
+  document.querySelectorAll('#coach-table-wrap tr.clickable').forEach(tr => {
+    tr.classList.toggle('selected', tr.querySelector('b')?.textContent === name);
+  });
+
+  const d = window._coachData?.[name];
+  if (!d) return;
+
+  setEl('coach-detail-name', name + ' · виды тренировок');
+
+  const entries = Object.entries(d.types).filter(([, v]) => v > 0);
+  const labels  = entries.map(([t]) => SUB_LABEL[t] || t);
+  const vals    = entries.map(([, v]) => v);
+  const colors  = entries.map(([t]) => TRAIN_CLR[TRAIN_TYPES.indexOf(t)] || '#94a3b8');
+  const total   = vals.reduce((s, v) => s + v, 0);
+
+  mkChart('c-coach-pie', 'doughnut', labels,
+    [{ data: vals, backgroundColor: colors, hoverOffset: 6, borderWidth: 2 }],
+    {
+      cutout: '52%',
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: { callbacks: { label: ctx => ' ' + ctx.raw + ' зан. (' + Math.round(ctx.raw / total * 100) + '%)' } },
+      },
+    }
+  );
+
+  document.getElementById('coach-detail').classList.add('open');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// EFFICIENCY
+// ════════════════════════════════════════════════════════════════════════════
+function renderEfficiency(rows, from, to) {
+  const total   = sumRev(rows);
+  const util    = calcUtil(rows, from, to);
+  const revpash = util.avail > 0 ? total / util.avail : 0;
+
+  setEl('kpi-revpash', fmtMoney(revpash));
+
+  const bookings = rows.filter(r => r.category !== 'inventory');
+  const avgCheck = bookings.length > 0 ? total / bookings.length : 0;
+  setEl('kpi-avgcheck', fmtMoney(avgCheck));
+  setEl('kpi-avgcheck-sub', bookings.length + ' бронирований');
+
+  const peakRev = rows.filter(r => {
+    const h = parseInt((r.time || '').split(':')[0], 10);
+    return h >= 18;
+  }).reduce((s, r) => s + r.sum, 0);
+
+  const peakPct = total > 0 ? peakRev / total * 100 : 0;
+  setEl('kpi-peak', fmtPct(peakPct));
+  setEl('kpi-peak-sub', fmtMoney(peakRev) + ' из ' + fmtMoney(total));
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// CHART HELPER
+// ════════════════════════════════════════════════════════════════════════════
+function mkChart(id, type, labels, datasets, opts = {}) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+
+  const { scales = {}, plugins: pluginOpts = {}, ...rest } = opts;
+
+  charts[id] = new Chart(ctx, {
+    type,
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      animation: { duration: 400 },
+      plugins: {
+        legend: { labels: { font: { size: 11 }, boxWidth: 12, padding: 12 }, ...pluginOpts.legend },
+        tooltip: { ...pluginOpts.tooltip },
+      },
+      scales,
+      ...rest,
+    },
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════════════════════════
+(function init() {
+  const saved = sessionStorage.getItem('dashKey');
+  if (saved) {
+    authKey = saved;
+    hide('login-screen'); show('dashboard');
+    document.getElementById('f-from').value = monthStartStr(0);
+    document.getElementById('f-to').value   = todayStr();
+    loadData();
+  }
+  document.getElementById('key-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+})();
+</script>
+</body>
+</html>
