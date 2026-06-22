@@ -428,16 +428,28 @@
       <div style="margin-top:12px" class="chart-wrap"><canvas id="c-court-types"></canvas></div>
     </div>
 
-    <!-- ─────────────── Тепловая карта ─────────────── -->
+    <!-- ─────────────── Тепловая карта загрузки по типам кортов ─────────────── -->
     <div class="section">
       <div class="section-header">
         <div class="section-title">
-          <span class="dot" style="background:#f97316"></span>Тепловая карта выручки
+          <span class="dot" style="background:#f97316"></span>Загрузка кортов по типам
           <span class="section-period" id="lbl-heatmap"></span>
         </div>
-        <span style="font-size:10px;color:#94a3b8">час × день недели</span>
+        <span style="font-size:10px;color:#94a3b8">% загрузки · час × день недели</span>
       </div>
-      <div class="heatmap-scroll" id="heatmap-wrap"></div>
+      <div id="heatmap-types-wrap"></div>
+    </div>
+
+    <!-- ─────────────── Тепловая карта по отдельному корту ─────────────── -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="dot" style="background:#f97316"></span>Загрузка отдельного корта
+        </div>
+        <select id="court-select" onchange="renderCourtHeatmap()"
+          style="font-size:12px;padding:5px 8px;border-radius:6px;border:1px solid #e2e8f0;color:#1e293b"></select>
+      </div>
+      <div class="heatmap-scroll" id="heatmap-single-wrap"></div>
     </div>
 
     <!-- ─────────────── Выручка по дням недели ─────────────── -->
@@ -745,7 +757,7 @@ function renderFiltered(from, to) {
   try { renderMonthly(rows); }      catch(e) { console.error('renderMonthly', e); }
   try { renderStructure(rows); }    catch(e) { console.error('renderStructure', e); }
   try { renderCourtTypes(rows); }   catch(e) { console.error('renderCourtTypes', e); }
-  try { renderHeatmap(rows); }      catch(e) { console.error('renderHeatmap', e); }
+  try { renderHeatmap(rows, from, to); } catch(e) { console.error('renderHeatmap', e); }
   try { renderWeekday(rows); }      catch(e) { console.error('renderWeekday', e); }
   try { renderCoaches(rows); }      catch(e) { console.error('renderCoaches', e); }
   try { renderEfficiency(rows, from, to); } catch(e) { console.error('renderEfficiency', e); }
@@ -982,46 +994,130 @@ function renderCourtTypes(rows) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// HEATMAP — час × день недели
+// HEATMAP — загрузка кортов (%) · час × день недели
 // ════════════════════════════════════════════════════════════════════════════
-function renderHeatmap(rows) {
-  const grid = {};
-  for (let h = HOUR_START; h < HOUR_START + WORK_HRS; h++) {
-    grid[h] = Array.from({ length: 7 }, () => ({ sum: 0, cnt: 0 }));
+const COURT_TYPE_COUNT = { ultra: 8, pano: 2, single: 2, center: 1 };
+const COURT_TYPE_ORDER = ['ultra', 'pano', 'single', 'center'];
+const COURT_NUM_TO_TYPE = (n) => {
+  if (n >= 1  && n <= 8)  return 'ultra';
+  if (n === 9)            return 'center';
+  if (n >= 10 && n <= 11) return 'single';
+  if (n >= 12 && n <= 13) return 'pano';
+  return null;
+};
+
+// Номер конкретного корта для строки. Клубные/внешние турниры агрегированы без
+// привязки к конкретному корту — кроме центрального (он определяется по subType).
+function courtNumberOf(r) {
+  if (r.category === 'tournament') return r.subType === 'center' ? 9 : null;
+  const m = (r.room || '').match(/Корт (\d+)/);
+  return m ? parseInt(m[1], 10) : null;
+}
+function courtTypeOf(r) {
+  const n = courtNumberOf(r);
+  return n != null ? COURT_NUM_TO_TYPE(n) : null;
+}
+
+function countWeekdaysInRange(from, to) {
+  const counts = Array(7).fill(0);
+  let d = new Date(from + 'T12:00:00');
+  const end = new Date(to + 'T12:00:00');
+  while (d <= end) {
+    counts[(d.getDay() + 6) % 7]++;
+    d = new Date(d.getTime() + 86400000);
   }
+  return counts;
+}
+
+// Растягиваем каждую запись на все занятые часы (брони всегда целое число часов)
+function buildUtilGrid(rows, capacity, weekdayCounts) {
+  const occ = {};
+  for (let h = HOUR_START; h < HOUR_START + WORK_HRS; h++) occ[h] = Array(7).fill(0);
 
   rows.forEach(r => {
-    if (r.category === 'inventory' || !r.time) return;
-    const h = parseInt(r.time.split(':')[0], 10);
-    if (h < HOUR_START || h >= HOUR_START + WORK_HRS) return;
-    const dow = (new Date(r.date + 'T12:00:00').getDay() + 6) % 7;
-    grid[h][dow].sum += r.sum;
-    grid[h][dow].cnt++;
+    if (!r.time) return;
+    const startH = parseInt(r.time.split(':')[0], 10);
+    const dow    = (new Date(r.date + 'T12:00:00').getDay() + 6) % 7;
+    const dur    = Math.max(1, Math.round(r.duration) || 1);
+    for (let i = 0; i < dur; i++) {
+      const h = startH + i;
+      if (h < HOUR_START || h >= HOUR_START + WORK_HRS) continue;
+      occ[h][dow]++;
+    }
   });
 
-  let maxSum = 0;
+  const pct = {};
   for (let h = HOUR_START; h < HOUR_START + WORK_HRS; h++) {
-    for (let d = 0; d < 7; d++) maxSum = Math.max(maxSum, grid[h][d].sum);
+    pct[h] = occ[h].map((cnt, d) => {
+      const avail = capacity * weekdayCounts[d];
+      return avail > 0 ? Math.min(100, cnt / avail * 100) : 0;
+    });
   }
+  return pct;
+}
 
+function heatmapTableHtml(pctGrid) {
   let html = '<table class="heatmap"><thead><tr><th style="width:34px"></th>';
   DAY_NAMES.forEach(d => html += `<th>${d}</th>`);
   html += '</tr></thead><tbody>';
-
   for (let h = HOUR_START; h < HOUR_START + WORK_HRS; h++) {
     html += `<tr><td class="hm-label">${String(h).padStart(2, '0')}:00</td>`;
     for (let d = 0; d < 7; d++) {
-      const { sum } = grid[h][d];
-      const t   = maxSum > 0 ? sum / maxSum : 0;
+      const p   = pctGrid[h][d];
+      const t   = p / 100;
       const bg  = heatColor(t);
       const txt = t > 0.45 ? '#fff' : (t > 0.05 ? '#1e293b' : '#cbd5e1');
-      const lbl = sum > 0 ? fmtK(sum) : '';
-      html += `<td class="hm-cell" style="background:${bg};color:${txt}" title="${sum > 0 ? fmtMoney(sum) : '—'}">${lbl}</td>`;
+      const lbl = p > 0.5 ? Math.round(p) + '%' : '';
+      html += `<td class="hm-cell" style="background:${bg};color:${txt}" title="${Math.round(p)}%">${lbl}</td>`;
     }
     html += '</tr>';
   }
   html += '</tbody></table>';
-  document.getElementById('heatmap-wrap').innerHTML = html;
+  return html;
+}
+
+function renderHeatmap(rows, from, to) {
+  const weekdayCounts = countWeekdaysInRange(from, to);
+  let html = '';
+  COURT_TYPE_ORDER.forEach(type => {
+    const typeRows = rows.filter(r => courtTypeOf(r) === type);
+    const grid = buildUtilGrid(typeRows, COURT_TYPE_COUNT[type], weekdayCounts);
+    const n = COURT_TYPE_COUNT[type];
+    html += `<div style="margin-bottom:18px">
+      <div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:6px">
+        ${SUB_LABEL[type]} <span style="color:#94a3b8;font-weight:400">(${n} ${n === 1 ? 'корт' : 'корта'})</span>
+      </div>
+      <div class="heatmap-scroll">${heatmapTableHtml(grid)}</div>
+    </div>`;
+  });
+  document.getElementById('heatmap-types-wrap').innerHTML = html;
+
+  initCourtSelect();
+  renderCourtHeatmap();
+}
+
+function initCourtSelect() {
+  const sel = document.getElementById('court-select');
+  if (!sel || sel.options.length > 0) return;
+  for (let n = 1; n <= 13; n++) {
+    const type = COURT_NUM_TO_TYPE(n);
+    const opt = document.createElement('option');
+    opt.value = n;
+    opt.textContent = 'Корт ' + n + ' (' + SUB_LABEL[type] + ')';
+    sel.appendChild(opt);
+  }
+}
+
+function renderCourtHeatmap() {
+  const sel = document.getElementById('court-select');
+  if (!sel) return;
+  const num  = parseInt(sel.value, 10);
+  const from = document.getElementById('f-from').value;
+  const to   = document.getElementById('f-to').value;
+  const weekdayCounts = countWeekdaysInRange(from, to);
+  const rows = filterRows(from, to).filter(r => courtNumberOf(r) === num);
+  const grid = buildUtilGrid(rows, 1, weekdayCounts);
+  document.getElementById('heatmap-single-wrap').innerHTML = heatmapTableHtml(grid);
 }
 
 function heatColor(t) {
