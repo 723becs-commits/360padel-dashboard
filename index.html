@@ -428,6 +428,29 @@
       <div style="margin-top:12px" class="chart-wrap"><canvas id="c-court-types"></canvas></div>
     </div>
 
+    <!-- ─────────────── Утилизация по типам кортов ─────────────── -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="dot" style="background:#059669"></span>Утилизация по типам кортов
+          <span class="section-period" id="lbl-typeutil"></span>
+        </div>
+      </div>
+      <div id="typeutil-wrap"></div>
+    </div>
+
+    <!-- ─────────────── Загрузка по периодам дня ─────────────── -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="dot" style="background:#f97316"></span>Загрузка по периодам дня
+          <span class="section-period" id="lbl-bucket"></span>
+        </div>
+        <span style="font-size:10px;color:#94a3b8">% загрузки</span>
+      </div>
+      <div class="heatmap-scroll" id="bucket-wrap"></div>
+    </div>
+
     <!-- ─────────────── Тепловая карта загрузки по типам кортов ─────────────── -->
     <div class="section">
       <div class="section-header">
@@ -719,7 +742,7 @@ function fmtDateRu(d) {
 
 function setPeriodLabels(from, to) {
   const label = '· ' + fmtDateRu(from) + ' — ' + fmtDateRu(to);
-  ['lbl-monthly','lbl-structure','lbl-breakdown','lbl-courts','lbl-heatmap','lbl-weekday','lbl-coaches'].forEach(id => {
+  ['lbl-monthly','lbl-structure','lbl-breakdown','lbl-courts','lbl-typeutil','lbl-bucket','lbl-heatmap','lbl-weekday','lbl-coaches'].forEach(id => {
     setEl(id, label);
   });
 }
@@ -757,6 +780,8 @@ function renderFiltered(from, to) {
   try { renderMonthly(rows); }      catch(e) { console.error('renderMonthly', e); }
   try { renderStructure(rows); }    catch(e) { console.error('renderStructure', e); }
   try { renderCourtTypes(rows); }   catch(e) { console.error('renderCourtTypes', e); }
+  try { renderTypeUtil(rows, from, to); }    catch(e) { console.error('renderTypeUtil', e); }
+  try { renderBucketTable(rows, from, to); } catch(e) { console.error('renderBucketTable', e); }
   try { renderHeatmap(rows, from, to); } catch(e) { console.error('renderHeatmap', e); }
   try { renderWeekday(rows); }      catch(e) { console.error('renderWeekday', e); }
   try { renderCoaches(rows); }      catch(e) { console.error('renderCoaches', e); }
@@ -1009,7 +1034,6 @@ const COURT_NUM_TO_TYPE = (n) => {
 // Номер конкретного корта для строки. Клубные/внешние турниры агрегированы без
 // привязки к конкретному корту — кроме центрального (он определяется по subType).
 function courtNumberOf(r) {
-  if (r.category === 'tournament') return r.subType === 'center' ? 9 : null;
   const m = (r.room || '').match(/Корт (\d+)/);
   return m ? parseInt(m[1], 10) : null;
 }
@@ -1118,6 +1142,93 @@ function renderCourtHeatmap() {
   const rows = filterRows(from, to).filter(r => courtNumberOf(r) === num);
   const grid = buildUtilGrid(rows, 1, weekdayCounts);
   document.getElementById('heatmap-single-wrap').innerHTML = heatmapTableHtml(grid);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// УТИЛИЗАЦИЯ ПО ТИПАМ КОРТОВ — таблица за выбранный период
+// ════════════════════════════════════════════════════════════════════════════
+function calcTypeUtil(rows, type, days) {
+  const avail = COURT_TYPE_COUNT[type] * WORK_HRS * days;
+  const used  = rows.filter(r => courtTypeOf(r) === type).reduce((s, r) => s + r.duration, 0);
+  return {
+    pct:   avail > 0 ? (used / avail * 100) : 0,
+    used:  Math.round(used * 10) / 10,
+    avail,
+  };
+}
+
+function renderTypeUtil(rows, from, to) {
+  const days = Math.round((new Date(to + 'T12:00:00') - new Date(from + 'T12:00:00')) / 86400000) + 1;
+  let html = '<table class="dtable"><thead><tr><th>Тип корта</th><th class="num">Кортов</th>' +
+    '<th class="num">Загрузка</th><th class="num">Занято / доступно</th></tr></thead><tbody>';
+  COURT_TYPE_ORDER.forEach(type => {
+    const u = calcTypeUtil(rows, type, days);
+    html += `<tr>
+      <td><b>${SUB_LABEL[type]}</b></td>
+      <td class="num">${COURT_TYPE_COUNT[type]}</td>
+      <td class="num fw7" style="color:#059669">${fmtPct(u.pct)}</td>
+      <td class="num" style="color:#64748b">${u.used} / ${u.avail} ч</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('typeutil-wrap').innerHTML = html;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ЗАГРУЗКА ПО ПЕРИОДАМ ДНЯ — таблица: тип корта × временной блок
+// ════════════════════════════════════════════════════════════════════════════
+const TIME_BUCKETS = [
+  { label: '07–08', from: 7,  to: 8  },
+  { label: '08–11', from: 8,  to: 11 },
+  { label: '11–14', from: 11, to: 14 },
+  { label: '14–17', from: 14, to: 17 },
+  { label: '17–20', from: 17, to: 20 },
+  { label: '20–23', from: 20, to: 23 },
+];
+
+function bucketIndexOf(h) {
+  return TIME_BUCKETS.findIndex(b => h >= b.from && h < b.to);
+}
+
+function calcTypeBucketUtil(rows, type, days) {
+  const typeRows = rows.filter(r => courtTypeOf(r) === type);
+  const occ = TIME_BUCKETS.map(() => 0);
+  typeRows.forEach(r => {
+    if (!r.time) return;
+    const startH = parseInt(r.time.split(':')[0], 10);
+    const dur    = Math.max(1, Math.round(r.duration) || 1);
+    for (let i = 0; i < dur; i++) {
+      const h  = startH + i;
+      const bi = bucketIndexOf(h);
+      if (bi >= 0) occ[bi]++;
+    }
+  });
+  const count = COURT_TYPE_COUNT[type];
+  return TIME_BUCKETS.map((b, i) => {
+    const avail = count * (b.to - b.from) * days;
+    return avail > 0 ? Math.min(100, occ[i] / avail * 100) : 0;
+  });
+}
+
+function renderBucketTable(rows, from, to) {
+  const days = Math.round((new Date(to + 'T12:00:00') - new Date(from + 'T12:00:00')) / 86400000) + 1;
+  let html = '<table class="heatmap"><thead><tr><th style="width:90px"></th>';
+  TIME_BUCKETS.forEach(b => html += `<th>${b.label}</th>`);
+  html += '</tr></thead><tbody>';
+  COURT_TYPE_ORDER.forEach(type => {
+    const pcts = calcTypeBucketUtil(rows, type, days);
+    html += `<tr><td class="hm-label" style="text-align:left;width:90px">${SUB_LABEL[type]}</td>`;
+    pcts.forEach(p => {
+      const t   = p / 100;
+      const bg  = heatColor(t);
+      const txt = t > 0.45 ? '#fff' : (t > 0.05 ? '#1e293b' : '#cbd5e1');
+      const lbl = p > 0.5 ? Math.round(p) + '%' : '';
+      html += `<td class="hm-cell" style="background:${bg};color:${txt}" title="${Math.round(p)}%">${lbl}</td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('bucket-wrap').innerHTML = html;
 }
 
 function heatColor(t) {
