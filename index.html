@@ -430,7 +430,7 @@
         <span class="dot" style="background:#0ea5e9"></span>Тренеры
         <span class="section-period" id="lbl-coaches"></span>
       </div>
-      <div style="margin-top:12px" id="coach-table-wrap"></div>
+      <div style="margin-top:12px; overflow-x:auto" id="coach-table-wrap"></div>
       <div style="margin-top:16px" class="chart-wrap">
         <canvas id="c-coach-bar" style="max-height:220px"></canvas>
       </div>
@@ -486,8 +486,9 @@ const DAY_NAMES = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
 
 const CAT_CLR  = { court:'#3b82f6', training:'#10b981', tournament:'#f59e0b', inventory:'#8b5cf6' };
 const COURT_CLR = { ultra:'#0ea5e9', pano:'#6366f1', single:'#ec4899', center:'#f97316' };
-const TRAIN_TYPES = ['t_ind','t_pair','t_split3','t_split4','t_group','t_trial'];
-const TRAIN_CLR   = ['#10b981','#34d399','#6ee7b7','#0ea5e9','#a78bfa','#f59e0b'];
+const TRAIN_TYPES  = ['t_ind','t_pair','t_split3','t_split4','t_group','t_trial'];
+const TRAIN_CLR    = ['#10b981','#34d399','#6ee7b7','#0ea5e9','#a78bfa','#f59e0b'];
+const TRAIN_SHORT  = { t_ind: 'Перс.', t_pair: 'Парн.', t_split3: 'Спл.3', t_split4: 'Спл.4', t_group: 'Групп.', t_trial: 'Пробн.' };
 
 // ════════════════════════════════════════════════════════════════════════════
 // STATE
@@ -1011,15 +1012,22 @@ function renderCoaches(rows) {
   const sorted = Object.entries(byCoach).sort((a, b) => b[1].sum - a[1].sum);
   const maxRev = sorted[0]?.[1].sum || 1;
 
-  // Table
-  let html = '<table class="dtable"><thead><tr><th>#</th><th>Тренер</th><th class="num">Занятий</th><th class="num">Выручка</th><th class="num">Ср. чек</th></tr></thead><tbody>';
+  // Table — с разбивкой по видам тренировок в числах
+  let html = '<table class="dtable"><thead><tr><th>#</th><th>Тренер</th>' +
+    TRAIN_TYPES.map(t => `<th class="num" title="${SUB_LABEL[t]}">${TRAIN_SHORT[t]}</th>`).join('') +
+    '<th class="num">Занятий</th><th class="num">Выручка</th><th class="num">Ср. чек</th></tr></thead><tbody>';
   sorted.forEach(([name, d], i) => {
     const avg = d.cnt > 0 ? d.sum / d.cnt : 0;
     const bw  = Math.round(d.sum / maxRev * 72);
     const esc = name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const typeCells = TRAIN_TYPES.map(t => {
+      const v = d.types[t] || 0;
+      return `<td class="num" style="color:${v ? '#1e293b' : '#cbd5e1'}">${v || '—'}</td>`;
+    }).join('');
     html += `<tr class="clickable" onclick="showCoachDetail('${esc}')">
       <td style="color:#94a3b8;font-size:11px">${i + 1}</td>
       <td><b>${name}</b><span class="ibar" style="width:${bw}px;background:#0ea5e9"></span></td>
+      ${typeCells}
       <td class="num">${d.cnt}</td>
       <td class="num fw7">${fmtMoney(d.sum)}</td>
       <td class="num" style="color:#64748b">${fmtMoney(avg)}</td>
@@ -1043,7 +1051,9 @@ function renderCoaches(rows) {
       x: { stacked: true, grid: { display: false }, ticks: { maxRotation: 30 } },
       y: { stacked: true, ticks: { callback: v => Number.isInteger(v) ? v : '' } },
     },
-    plugins: { legend: { position: 'bottom' } },
+    plugins: {
+      legend: { position: 'bottom' },
+    },
   });
 
   window._coachData = byCoach;
@@ -1124,6 +1134,7 @@ function mkChart(id, type, labels, datasets, opts = {}) {
       maintainAspectRatio: true,
       animation: { duration: 400 },
       plugins: {
+        ...pluginOpts,
         legend: { labels: { font: { size: 11 }, boxWidth: 12, padding: 12 }, ...pluginOpts.legend },
         tooltip: { ...pluginOpts.tooltip },
       },
