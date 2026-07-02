@@ -878,10 +878,13 @@ function cashBreakdown(c) {
 
 function sumRev(rows) { return rows.reduce((s, r) => s + r.sum, 0); }
 
+// Центральный корт определяем по полю room (courtTypeOf), а не по subType — у турниров
+// (club/ext) subType всегда обозначает ТИП выручки, а не корт: финал турнира на
+// центральном корте не должен теряться из статистики "12 кортов" из-за подмены типа.
 function calcUtil(rows, from, to) {
   const days  = Math.round((new Date(to + 'T12:00:00') - new Date(from + 'T12:00:00')) / 86400000) + 1;
   const avail = COURTS * WORK_HRS * days;
-  const used  = rows.filter(r => r.category !== 'inventory' && r.subType !== 'center').reduce((s, r) => s + r.duration, 0);
+  const used  = rows.filter(r => r.category !== 'inventory' && courtTypeOf(r) !== 'center').reduce((s, r) => s + r.duration, 0);
   return {
     pct:   avail > 0 ? (used / avail * 100) : 0,
     used:  Math.round(used * 10) / 10,
@@ -892,7 +895,7 @@ function calcUtil(rows, from, to) {
 function calcCenterUtil(rows, from, to) {
   const days  = Math.round((new Date(to + 'T12:00:00') - new Date(from + 'T12:00:00')) / 86400000) + 1;
   const avail = WORK_HRS * days; // 1 корт
-  const used  = rows.filter(r => r.subType === 'center').reduce((s, r) => s + r.duration, 0);
+  const used  = rows.filter(r => courtTypeOf(r) === 'center').reduce((s, r) => s + r.duration, 0);
   return {
     pct:   avail > 0 ? (used / avail * 100) : 0,
     used:  Math.round(used * 10) / 10,
