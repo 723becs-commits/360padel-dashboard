@@ -1090,10 +1090,11 @@ function periodBuckets(gran, count) {
     const monday = new Date(now); monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
     for (let off = count - 1; off >= 0; off--) {
       const s = new Date(monday); s.setDate(monday.getDate() - off * 7);
-      const isCur = off === 0;
-      const e = isCur ? new Date(now) : new Date(s.getFullYear(), s.getMonth(), s.getDate() + 6);
+      const isCur   = off === 0;
+      const weekEnd = new Date(s); weekEnd.setDate(s.getDate() + 6); // воскресенье
+      const e = isCur ? new Date(now) : weekEnd;                     // для значения — по сегодня
       out.push({ from: isoLocal(s), to: isoLocal(e), cur: isCur,
-        label: s.getDate() + '.' + String(s.getMonth() + 1).padStart(2, '0') });
+        label: weekEnd.getDate() + '.' + String(weekEnd.getMonth() + 1).padStart(2, '0') }); // подпись — последний день недели
     }
   }
   return out;
@@ -1127,7 +1128,8 @@ function renderDynamics() {
   const vals    = buckets.map(b => metricValue(b.from, b.to));
   const colors  = buckets.map(b => b.cur ? '#c4b5fd' : '#7c3aed');   // текущий (неполный) — светлее
 
-  const done    = vals.filter((_, i) => !buckets[i].cur);
+  // Среднее — по завершённым периодам с ненулевым значением (пустые месяцы/недели не занижают)
+  const done    = vals.filter((v, i) => !buckets[i].cur && v > 0);
   const avgPast = done.length ? done.reduce((s, v) => s + v, 0) / done.length : 0;
 
   const datasets = [
