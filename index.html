@@ -128,22 +128,19 @@
     .plan-ok   { color: #059669; } .plan-bar-fill.plan-ok   { background: #10b981; }
     .plan-warn { color: #d97706; } .plan-bar-fill.plan-warn { background: #f59e0b; }
     .plan-bad  { color: #dc2626; } .plan-bar-fill.plan-bad  { background: #ef4444; }
-    .plan-nums { display: flex; gap: 32px; margin: 10px 0 6px; }
-    .plan-stat { display: flex; flex-direction: column; }
-    .plan-stat-val { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.1; }
-    .plan-stat-lbl { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; margin-top: 3px; }
+    .plan-ends { display: flex; justify-content: space-between; align-items: baseline; margin: 10px 0 6px; }
+    .plan-stat-val { font-size: 23px; font-weight: 800; letter-spacing: -0.5px; }
+    .plan-stat-lbl { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; }
 
     /* ── Динамика ──────────────────────────────────────────────────────────── */
-    .dyn-toggle { display: flex; gap: 6px; margin: 0 0 12px; }
+    .dyn-controls { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 0 0 12px; align-items: center; }
+    .dyn-group { display: flex; gap: 6px; flex-wrap: wrap; }
+    .dyn-group-lbl { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; align-self: center; margin-right: 2px; }
     .dyn-btn {
-      padding: 5px 14px; border: 1px solid #e2e8f0; background: #fff; border-radius: 8px;
+      padding: 5px 12px; border: 1px solid #e2e8f0; background: #fff; border-radius: 8px;
       font-size: 12px; font-weight: 600; color: #64748b; cursor: pointer;
     }
     .dyn-btn.active { background: #7c3aed; color: #fff; border-color: #7c3aed; }
-    .dyn-up   { color: #059669; font-weight: 700; }
-    .dyn-down { color: #dc2626; font-weight: 700; }
-    .dyn-flat { color: #94a3b8; }
-    .dtable td.sub-row { padding-left: 22px; color: #64748b; font-weight: 400; }
 
     /* ── Section ─────────────────────────────────────────────────────────────── */
     .section {
@@ -364,15 +361,9 @@
     <p class="block-label" id="plan-block-label" style="display:none">🎯 Выполнение плана <span id="plan-month" style="font-weight:400;color:#94a3b8"></span></p>
     <div id="plan-rev-card" class="plan-card" style="display:none">
       <div class="plan-title">Выручка центра</div>
-      <div class="plan-nums">
-        <div class="plan-stat">
-          <span class="plan-stat-val" id="plan-rev-factpct">—</span>
-          <span class="plan-stat-lbl">факт сейчас</span>
-        </div>
-        <div class="plan-stat">
-          <span class="plan-stat-val" id="plan-rev-forepct">—</span>
-          <span class="plan-stat-lbl">прогноз к концу месяца</span>
-        </div>
+      <div class="plan-ends">
+        <span><b class="plan-stat-val" id="plan-rev-factpct">—</b> <span class="plan-stat-lbl">факт сейчас</span></span>
+        <span style="text-align:right"><span class="plan-stat-lbl">прогноз</span> <b class="plan-stat-val" id="plan-rev-forepct">—</b></span>
       </div>
       <div class="plan-bar"><div class="plan-bar-fill" id="plan-rev-fill"></div></div>
       <div class="plan-sub">
@@ -382,14 +373,33 @@
     </div>
     <div id="plan-coach-wrap" style="display:none"></div>
 
-    <!-- ─────────────── Динамика (накопительно к текущему дню) ─────────────── -->
-    <p class="block-label" style="margin-top:6px">📈 Динамика <span style="font-weight:400;color:#94a3b8">· накопительно к текущему дню</span></p>
-    <div class="dyn-toggle">
-      <button class="dyn-btn" data-mode="week" onclick="setDynMode('week')">Неделя</button>
-      <button class="dyn-btn active" data-mode="month" onclick="setDynMode('month')">Месяц</button>
-      <button class="dyn-btn" data-mode="year" onclick="setDynMode('year')">Год</button>
+    <!-- ─────────────── Динамика показателя по периодам ─────────────── -->
+    <div class="section">
+      <div class="section-title">
+        <span class="dot" style="background:#7c3aed"></span>Динамика
+        <span class="section-period">как менялся показатель по периодам</span>
+      </div>
+      <div class="dyn-controls" style="margin-top:12px">
+        <div class="dyn-group" id="dyn-metric">
+          <button class="dyn-btn active" data-metric="rev">Выручка</button>
+          <button class="dyn-btn" data-metric="avg">Средний чек</button>
+          <button class="dyn-btn" data-metric="sessions">Тренировки</button>
+          <button class="dyn-btn" data-metric="util">Утилизация</button>
+        </div>
+        <div class="dyn-group" id="dyn-gran">
+          <span class="dyn-group-lbl">период</span>
+          <button class="dyn-btn" data-gran="week">Неделя</button>
+          <button class="dyn-btn active" data-gran="month">Месяц</button>
+        </div>
+        <div class="dyn-group" id="dyn-count">
+          <span class="dyn-group-lbl">глубина</span>
+          <button class="dyn-btn" data-count="4">4</button>
+          <button class="dyn-btn active" data-count="6">6</button>
+          <button class="dyn-btn" data-count="12">12</button>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="c-dyn"></canvas></div>
     </div>
-    <div id="dyn-table-wrap"></div>
 
     <!-- ─────────────── Error banner ─────────────── -->
     <div class="error-banner" id="error-banner"></div>
@@ -1030,15 +1040,12 @@ function coachMatch(dataName, planName) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// ДИНАМИКА — накопительно к текущему относительному дню (WoW / MoM / YoY)
+// ДИНАМИКА — как менялся показатель по последним N периодам (гистограмма)
 // ════════════════════════════════════════════════════════════════════════════
-let dynMode = 'month';
-
-function setDynMode(mode) {
-  dynMode = mode;
-  document.querySelectorAll('.dyn-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
-  renderDynamics();
-}
+let dynMetric = 'rev';    // rev | avg | sessions | util
+let dynGran   = 'month';  // month | week
+let dynCount  = 6;        // сколько периодов назад показывать
+let _dynWired = false;
 
 function isoLocal(d) {
   return d.getFullYear() + '-' +
@@ -1046,92 +1053,105 @@ function isoLocal(d) {
     String(d.getDate()).padStart(2, '0');
 }
 
-// Диапазоны «с начала периода по тот же относительный день», 0 / −1 / −2 периода назад
-function cumRanges(mode) {
+function wireDyn() {
+  if (_dynWired) return; _dynWired = true;
+  const bind = (id, attr, cast, set) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('click', e => {
+      const b = e.target.closest('.dyn-btn');
+      if (!b) return;
+      el.querySelectorAll('.dyn-btn').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      set(cast(b.dataset[attr]));
+      renderDynamics();
+    });
+  };
+  bind('dyn-metric', 'metric', String, v => dynMetric = v);
+  bind('dyn-gran',   'gran',   String, v => dynGran   = v);
+  bind('dyn-count',  'count',  Number, v => dynCount  = v);
+}
+
+// Последние `count` периодов, самый свежий — справа. Текущий период неполный (to = сегодня).
+function periodBuckets(gran, count) {
   const now = new Date();
   const out = [];
-  if (mode === 'month') {
-    const day = now.getDate();
-    for (let off = 0; off >= -2; off--) {
-      const start   = new Date(now.getFullYear(), now.getMonth() + off, 1);
-      const lastDay = new Date(now.getFullYear(), now.getMonth() + off + 1, 0).getDate();
-      const endDay  = Math.min(day, lastDay);
-      const end     = new Date(now.getFullYear(), now.getMonth() + off, endDay);
-      out.push({ from: isoLocal(start), to: isoLocal(end),
-        label: start.toLocaleDateString('ru-RU', { month: 'short' }) + ' 1–' + endDay });
+  if (gran === 'month') {
+    for (let off = count - 1; off >= 0; off--) {
+      const start   = new Date(now.getFullYear(), now.getMonth() - off, 1);
+      const isCur    = off === 0;
+      const lastDay = new Date(now.getFullYear(), now.getMonth() - off + 1, 0).getDate();
+      const end     = isCur ? new Date(now.getFullYear(), now.getMonth(), now.getDate())
+                            : new Date(now.getFullYear(), now.getMonth() - off, lastDay);
+      out.push({ from: isoLocal(start), to: isoLocal(end), cur: isCur,
+        label: start.toLocaleDateString('ru-RU', { month: 'short', year: '2-digit' }) });
     }
-  } else if (mode === 'week') {
+  } else { // week
     const monday = new Date(now); monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-    const idx = (now.getDay() + 6) % 7; // сколько дней прошло в неделе (0=пн)
-    const names = ['Эта нед.', 'Пред. нед.', '2 нед. назад'];
-    for (let off = 0; off >= -2; off--) {
-      const s = new Date(monday); s.setDate(monday.getDate() + off * 7);
-      const e = new Date(s);      e.setDate(s.getDate() + idx);
-      out.push({ from: isoLocal(s), to: isoLocal(e), label: names[-off] });
-    }
-  } else { // year
-    for (let off = 0; off >= -2; off--) {
-      const s = new Date(now.getFullYear() + off, 0, 1);
-      const e = new Date(now.getFullYear() + off, now.getMonth(), now.getDate());
-      out.push({ from: isoLocal(s), to: isoLocal(e), label: String(now.getFullYear() + off) + ' YTD' });
+    for (let off = count - 1; off >= 0; off--) {
+      const s = new Date(monday); s.setDate(monday.getDate() - off * 7);
+      const isCur = off === 0;
+      const e = isCur ? new Date(now) : new Date(s.getFullYear(), s.getMonth(), s.getDate() + 6);
+      out.push({ from: isoLocal(s), to: isoLocal(e), cur: isCur,
+        label: s.getDate() + '.' + String(s.getMonth() + 1).padStart(2, '0') });
     }
   }
   return out;
 }
 
-function aggRange(from, to) {
-  const cr   = filterCashRows(from, to);
-  const paid = cr.filter(r => r.category !== 'refund');
-  const rev  = paid.reduce((s, r) => s + (parseFloat(r.sum) || 0), 0);
-  const byCat = { court: 0, training: 0, tournament: 0, inventory: 0 };
-  paid.forEach(r => { if (byCat[r.category] !== undefined) byCat[r.category] += (parseFloat(r.sum) || 0); });
-  const payCount = paid.filter(r => (parseFloat(r.sum) || 0) !== 0).length;
-  const avg      = payCount ? rev / payCount : 0;
-  const orows    = filterRows(from, to);
-  const sessions = orows.filter(r => r.category === 'training').length;
-  const util     = calcUtil(orows, from, to).pct;
-  return { rev, byCat, avg, sessions, util };
+function metricValue(from, to) {
+  if (dynMetric === 'util')     return calcUtil(filterRows(from, to), from, to).pct;
+  if (dynMetric === 'sessions') return filterRows(from, to).filter(r => r.category === 'training').length;
+  const cr = filterCashRows(from, to).filter(r => r.category !== 'refund');
+  if (dynMetric === 'rev')      return cr.reduce((s, r) => s + (parseFloat(r.sum) || 0), 0);
+  if (dynMetric === 'avg') {
+    const paid = cr.filter(r => (parseFloat(r.sum) || 0) !== 0);
+    const rev  = paid.reduce((s, r) => s + (parseFloat(r.sum) || 0), 0);
+    return paid.length ? rev / paid.length : 0;
+  }
+  return 0;
 }
 
-function dynDelta(cur, prev) {
-  if (!prev) return '<span class="dyn-flat">—</span>';
-  const d = (cur - prev) / prev * 100;
-  const cls = d > 0.5 ? 'dyn-up' : d < -0.5 ? 'dyn-down' : 'dyn-flat';
-  const arr = d > 0.5 ? '▲' : d < -0.5 ? '▼' : '→';
-  return `<span class="${cls}">${arr} ${d > 0 ? '+' : ''}${Math.round(d)}%</span>`;
+function dynFmt(v) {
+  if (dynMetric === 'util')     return fmtPct(v);
+  if (dynMetric === 'sessions') return String(Math.round(v));
+  return fmtK(v);
 }
 
 function renderDynamics() {
-  const wrap = document.getElementById('dyn-table-wrap');
-  if (!wrap) return;
-  const A   = cumRanges(dynMode).map(r => Object.assign({}, r, aggRange(r.from, r.to)));
-  const cur = A[0];
+  wireDyn();
+  if (!document.getElementById('c-dyn')) return;
 
-  const rows = [
-    ['Выручка',        a => a.rev,              fmtK,               false],
-    ['Корты',          a => a.byCat.court,      fmtK,               true],
-    ['Тренировки',     a => a.byCat.training,   fmtK,               true],
-    ['Турниры',        a => a.byCat.tournament, fmtK,               true],
-    ['Инвентарь',      a => a.byCat.inventory,  fmtK,               true],
-    ['Средний чек',    a => a.avg,              fmtK,               false],
-    ['Тренировок, шт', a => a.sessions,         v => String(v),     false],
-    ['Утилизация',     a => a.util,             fmtPct,             false],
+  const buckets = periodBuckets(dynGran, dynCount);
+  const labels  = buckets.map(b => b.cur ? b.label + ' •' : b.label);
+  const vals    = buckets.map(b => metricValue(b.from, b.to));
+  const colors  = buckets.map(b => b.cur ? '#c4b5fd' : '#7c3aed');   // текущий (неполный) — светлее
+
+  const done    = vals.filter((_, i) => !buckets[i].cur);
+  const avgPast = done.length ? done.reduce((s, v) => s + v, 0) / done.length : 0;
+
+  const datasets = [
+    { type: 'bar', label: 'Значение', data: vals, backgroundColor: colors,
+      borderRadius: 4, borderSkipped: false, order: 2 },
+    { type: 'line', label: 'Среднее (завершённые)', data: labels.map(() => avgPast),
+      borderColor: '#f59e0b', borderWidth: 2, borderDash: [6, 4], pointRadius: 0, fill: false, order: 1 },
   ];
 
-  let html = '<div style="overflow-x:auto"><table class="dtable"><thead><tr><th>Показатель</th>';
-  A.forEach((a, i) => { html += `<th class="num">${a.label}</th>` + (i > 0 ? '<th class="num">Δ к тек.</th>' : ''); });
-  html += '</tr></thead><tbody>';
-
-  rows.forEach(([label, acc, fmt, isSub]) => {
-    html += `<tr><td class="${isSub ? 'sub-row' : 'fw7'}">${isSub ? '├ ' : ''}${label}</td>`;
-    A.forEach((a, i) => {
-      html += `<td class="num${isSub ? '' : ' fw7'}">${fmt(acc(a))}</td>`;
-      if (i > 0) html += `<td class="num">${dynDelta(acc(cur), acc(a))}</td>`;
-    });
-    html += '</tr>';
+  mkChart('c-dyn', 'bar', labels, datasets, {
+    scales: {
+      x: { grid: { display: false } },
+      y: { beginAtZero: true, ticks: { callback: v =>
+        dynMetric === 'util' ? v + '%' : (dynMetric === 'sessions' ? v : fmtK(v)) } },
+    },
+    plugins: {
+      legend: { position: 'bottom' },
+      tooltip: { callbacks: { label: ctx => {
+        if (ctx.dataset.type === 'line') return 'Среднее: ' + dynFmt(avgPast);
+        const b = buckets[ctx.dataIndex];
+        return dynFmt(ctx.raw) + (b && b.cur ? ' · период идёт' : '');
+      } } },
+    },
   });
-  html += '</tbody></table></div>';
-  wrap.innerHTML = html;
 }
 
 // Центральный корт определяем по полю room (courtTypeOf), а не по subType — у турниров
