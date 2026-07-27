@@ -110,6 +110,25 @@
       .kpi-value { font-size: 14px; }
     }
 
+    /* ── План ────────────────────────────────────────────────────────────────── */
+    .plan-card {
+      background: white; border-radius: 12px; padding: 14px 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07); margin-bottom: 12px;
+      border-left: 3px solid #7c3aed;
+    }
+    .plan-head { display: flex; justify-content: space-between; align-items: baseline; }
+    .plan-title { font-size: 12px; font-weight: 700; color: #1e293b; }
+    .plan-forecast-pct { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+    .plan-bar {
+      position: relative; height: 8px; border-radius: 6px;
+      background: #eef2f7; margin: 10px 0 8px; overflow: hidden;
+    }
+    .plan-bar-fill { height: 100%; border-radius: 6px; transition: width .4s ease; }
+    .plan-sub { font-size: 11px; color: #64748b; }
+    .plan-ok   { color: #059669; } .plan-bar-fill.plan-ok   { background: #10b981; }
+    .plan-warn { color: #d97706; } .plan-bar-fill.plan-warn { background: #f59e0b; }
+    .plan-bad  { color: #dc2626; } .plan-bar-fill.plan-bad  { background: #ef4444; }
+
     /* ── Section ─────────────────────────────────────────────────────────────── */
     .section {
       background: white; border-radius: 14px; padding: 16px;
@@ -324,25 +343,20 @@
       </div>
     </div>
 
-    <!-- ─────────────── KPI: Поступления ДС ─────────────── -->
-    <p class="block-label">Поступления ДС <span style="font-weight:400;color:#94a3b8">(по зашедшим деньгам)</span></p>
-    <div class="kpi-grid">
-      <div class="kpi-card" style="--accent:#14b8a6">
-        <div class="kpi-label">Вчера</div>
-        <div class="kpi-value" style="color:#14b8a6" id="cash-yd">—</div>
-        <div class="kpi-sub" id="cash-yd-sub"></div>
+    <!-- ─────────────── Выполнение плана (текущий месяц) ─────────────── -->
+    <p class="block-label" id="plan-block-label" style="display:none">🎯 Выполнение плана <span id="plan-month" style="font-weight:400;color:#94a3b8"></span></p>
+    <div id="plan-rev-card" class="plan-card" style="display:none">
+      <div class="plan-head">
+        <span class="plan-title">Выручка центра</span>
+        <span class="plan-forecast-pct" id="plan-rev-fpct">—</span>
       </div>
-      <div class="kpi-card" style="--accent:#14b8a6">
-        <div class="kpi-label">Текущая неделя</div>
-        <div class="kpi-value" style="color:#14b8a6" id="cash-wk">—</div>
-        <div class="kpi-sub" id="cash-wk-sub"></div>
-      </div>
-      <div class="kpi-card" style="--accent:#14b8a6">
-        <div class="kpi-label">Текущий месяц</div>
-        <div class="kpi-value" style="color:#14b8a6" id="cash-mo">—</div>
-        <div class="kpi-sub" id="cash-mo-sub"></div>
+      <div class="plan-bar"><div class="plan-bar-fill" id="plan-rev-fill"></div></div>
+      <div class="plan-sub">
+        <span id="plan-rev-fact">—</span>
+        <span id="plan-rev-forecast" style="float:right"></span>
       </div>
     </div>
+    <div id="plan-coach-wrap" style="display:none"></div>
 
     <!-- ─────────────── Error banner ─────────────── -->
     <div class="error-banner" id="error-banner"></div>
@@ -369,11 +383,6 @@
         <div class="kpi-label">RevPASH</div>
         <div class="kpi-value accent-blue" id="pkpi-revpash">—</div>
         <div class="kpi-sub">выручка / корто-час</div>
-      </div>
-      <div class="kpi-card" style="--accent:#14b8a6; grid-column: 1 / -1">
-        <div class="kpi-label">Поступления ДС за период</div>
-        <div class="kpi-value" style="color:#14b8a6" id="pkpi-cash">—</div>
-        <div class="kpi-sub" id="pkpi-cash-sub"></div>
       </div>
     </div>
 
@@ -535,26 +544,36 @@ const HOUR_START = 7;
 const CAT_LABEL = {
   court: 'Аренда кортов', training: 'Тренировки',
   tournament: 'Турниры',  inventory: 'Инвентарь',
+  wellness: 'Велнес', certificate: 'Сертификаты',
+  account: 'Лицевой счёт', other: 'Прочие', refund: 'Возвраты',
 };
 const SUB_LABEL = {
   ultra: 'Ультрапанорамный', pano: 'Панорамный', single: 'Сингл', center: 'Центральный',
-  t_ind: 'Персональная', t_pair: 'Парная', t_split3: 'Сплит 3',
-  t_split4: 'Сплит 4', t_group: 'Групповая (новички)', t_trial: 'Пробное занятие',
+  t_ind: 'Персональная', t_pair: 'Парная', t_pair_ofp: 'Парная ОФП',
+  t_ofp: 'Персональная ОФП',
+  t_split3: 'Сплит 3', t_split4: 'Сплит 4',
+  t_group: 'Групповая (новички)', t_trial: 'Пробное / компл.',
   club: 'Клубный турнир', ext: 'Внешний турнир', inv_1c: 'Инвентарь',
+  massage: 'Массаж', therapy: 'Прессотерапия', cert: 'Сертификат',
+  topup: 'Взнос на счёт',
 };
 const DAY_NAMES = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
 
-const CAT_CLR  = { court:'#3b82f6', training:'#10b981', tournament:'#f59e0b', inventory:'#8b5cf6' };
+const CAT_CLR  = {
+  court:'#3b82f6', training:'#10b981', tournament:'#f59e0b', inventory:'#8b5cf6',
+  wellness:'#14b8a6', certificate:'#ec4899', account:'#0ea5e9', other:'#94a3b8', refund:'#f87171',
+};
 const COURT_CLR = { ultra:'#0ea5e9', pano:'#6366f1', single:'#ec4899', center:'#f97316' };
-const TRAIN_TYPES  = ['t_ind','t_pair','t_split3','t_split4','t_group','t_trial'];
-const TRAIN_CLR    = ['#10b981','#34d399','#6ee7b7','#0ea5e9','#a78bfa','#f59e0b'];
-const TRAIN_SHORT  = { t_ind: 'Перс.', t_pair: 'Парн.', t_split3: 'Спл.3', t_split4: 'Спл.4', t_group: 'Групп.', t_trial: 'Пробн.' };
+const TRAIN_TYPES  = ['t_ind','t_ofp','t_pair','t_pair_ofp','t_split3','t_split4','t_group','t_trial'];
+const TRAIN_CLR    = ['#10b981','#059669','#34d399','#6ee7b7','#0ea5e9','#6366f1','#a78bfa','#f59e0b'];
+const TRAIN_SHORT  = { t_ind: 'Перс.', t_ofp: 'ОФП', t_pair: 'Парн.', t_pair_ofp: 'Парн.ОФП', t_split3: 'Спл.3', t_split4: 'Спл.4', t_group: 'Групп.', t_trial: 'Пробн.' };
 
 // ════════════════════════════════════════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════════════════════════════════════════
 let allRows = [];
 let allCashRows = [];
+let allPlans = {};
 let charts  = {};
 let authKey = '';
 
@@ -620,6 +639,7 @@ async function doLogin() {
     sessionStorage.setItem('dashKey', key);
     allRows = data.rows || [];
     allCashRows = data.cashRows || [];
+    allPlans = data.plans || {};
     openDashboard(data.ts);
   } catch (e) {
     setEl('login-error', 'Ошибка соединения: ' + e.message);
@@ -647,6 +667,7 @@ async function loadData() {
 
     allRows = data.rows;
     allCashRows = data.cashRows || [];
+    allPlans = data.plans || {};
     setEl('update-ts', 'Обновлено: ' + fmtTs(data.ts));
 
     // Гарантируем, что даты установлены перед рендером
@@ -706,10 +727,16 @@ function hide(id)        { document.getElementById(id)?.classList.add('hidden');
 // ════════════════════════════════════════════════════════════════════════════
 // FILTER
 // ════════════════════════════════════════════════════════════════════════════
-function filterRows(from, to) { return allRows.filter(r => r.date >= from && r.date <= to); }
+function filterRows(from, to)     { return allRows.filter(r => r.date >= from && r.date <= to); }
+function filterCashRows(from, to) { return allCashRows.filter(r => r.date >= from && r.date <= to); }
+
+// Выручка из Поступлений ДС (исключаем возвраты)
+function sumCashRev(cashRows) {
+  return cashRows.filter(r => r.category !== 'refund').reduce((s, r) => s + r.sum, 0);
+}
 
 function calcCash(from, to) {
-  const rows = allCashRows.filter(r => r.date >= from && r.date <= to);
+  const rows = filterCashRows(from, to);
   let card = 0, cash = 0, noncash = 0;
   rows.forEach(r => {
     if      (r.method === 'card')    card    += r.sum;
@@ -752,7 +779,7 @@ function setQuick(type) {
   if (type === 'month')  { from = monthStartStr(0);  to = todayStr(); }
   if (type === 'lmonth') { from = monthStartStr(-1);  to = monthEndStr(-1); }
   if (type === 'all') {
-    const dates = allRows.map(r => r.date).filter(Boolean).sort();
+    const dates = [...allRows.map(r => r.date), ...allCashRows.map(r => r.date)].filter(Boolean).sort();
     from = dates[0] || monthStartStr(0);
     to   = todayStr();
   }
@@ -766,48 +793,43 @@ function setQuick(type) {
 // ════════════════════════════════════════════════════════════════════════════
 function renderAll() {
   renderKPIs();
+  try { renderPlan(); } catch(e) { console.error('renderPlan', e); }
   applyFilter(); // renderMonthly вызывается внутри renderFiltered
 }
 
 function renderFiltered(from, to) {
   setPeriodLabels(from, to);
-  const rows = filterRows(from, to);
+  const rows     = filterRows(from, to);         // SHEET_OPS — утилизация, тренеры
+  const cashRows = filterCashRows(from, to);     // SHEET_CASH — выручка
 
-  // KPI за период — сразу под фильтром
-  renderPeriodKPIs(rows, from, to);
+  renderPeriodKPIs(rows, cashRows, from, to);
 
-  // Все графики используют отфильтрованные данные
-  try { renderMonthly(rows); }      catch(e) { console.error('renderMonthly', e); }
-  try { renderStructure(rows); }    catch(e) { console.error('renderStructure', e); }
-  try { renderCourtTypes(rows); }   catch(e) { console.error('renderCourtTypes', e); }
+  try { renderMonthly(cashRows); }      catch(e) { console.error('renderMonthly', e); }
+  try { renderStructure(cashRows); }    catch(e) { console.error('renderStructure', e); }
+  try { renderCourtTypes(rows, cashRows); }  catch(e) { console.error('renderCourtTypes', e); }
   try { renderTypeUtil(rows, from, to); }    catch(e) { console.error('renderTypeUtil', e); }
   try { renderBucketTable(rows, from, to); } catch(e) { console.error('renderBucketTable', e); }
   try { renderHeatmap(rows, from, to); } catch(e) { console.error('renderHeatmap', e); }
-  try { renderWeekday(rows); }      catch(e) { console.error('renderWeekday', e); }
-  try { renderCoaches(rows); }      catch(e) { console.error('renderCoaches', e); }
-  try { renderEfficiency(rows, from, to); } catch(e) { console.error('renderEfficiency', e); }
+  try { renderWeekday(cashRows); }      catch(e) { console.error('renderWeekday', e); }
+  try { renderCoaches(rows); }          catch(e) { console.error('renderCoaches', e); }
+  try { renderEfficiency(rows, cashRows, from, to); } catch(e) { console.error('renderEfficiency', e); }
 }
 
-function renderPeriodKPIs(rows, from, to) {
-  const total = sumRev(rows);
-  const util  = calcUtil(rows, from, to);
+function renderPeriodKPIs(rows, cashRows, from, to) {
+  const total  = sumCashRev(cashRows);
+  const util   = calcUtil(rows, from, to);
   const center = calcCenterUtil(rows, from, to);
   const revpash = util.avail > 0 ? total / util.avail : 0;
-  const cnt   = rows.filter(r => r.category !== 'inventory').length;
+  const cnt   = cashRows.filter(r => r.category !== 'refund').length;
 
   setEl('pkpi-rev',         fmtMoney(total));
-  setEl('pkpi-rev-sub',     cnt + ' бронирований');
+  setEl('pkpi-rev-sub',     cnt + ' платежей');
   setEl('pkpi-util',        fmtPct(util.pct));
   setEl('pkpi-util-sub',    util.used + ' / ' + util.avail + ' корто-ч');
   setEl('pkpi-center',      fmtPct(center.pct));
   setEl('pkpi-center-sub',  center.used + ' / ' + center.avail + ' корто-ч');
   setEl('pkpi-revpash',     fmtMoney(revpash));
 
-  const cashP = calcCash(from, to);
-  setEl('pkpi-cash',     fmtMoney(cashP.total));
-  setEl('pkpi-cash-sub', cashBreakdown(cashP));
-
-  // Показываем блок только когда данные есть
   const grid  = document.getElementById('period-kpi-grid');
   const label = document.getElementById('period-kpi-label');
   if (grid)  grid.style.display  = 'grid';
@@ -823,17 +845,16 @@ function renderKPIs() {
   const ws = weekStartStr();
   const ms = monthStartStr(0);
 
-  // Revenue
-  setEl('rev-yd', fmtMoney(sumRev(filterRows(yd, yd))));
-  setEl('rev-wk', fmtMoney(sumRev(filterRows(ws, td))));
-  setEl('rev-mo', fmtMoney(sumRev(filterRows(ms, td))));
-
-  const cntYd = filterRows(yd, yd).filter(r => r.category !== 'inventory').length;
-  const cntWk = filterRows(ws, td).filter(r => r.category !== 'inventory').length;
-  const cntMo = filterRows(ms, td).filter(r => r.category !== 'inventory').length;
-  setEl('rev-yd-sub', cntYd + ' бронирований');
-  setEl('rev-wk-sub', cntWk + ' бронирований');
-  setEl('rev-mo-sub', cntMo + ' бронирований');
+  // Revenue (из Поступлений ДС)
+  const cashYd = filterCashRows(yd, yd);
+  const cashWk = filterCashRows(ws, td);
+  const cashMo = filterCashRows(ms, td);
+  setEl('rev-yd', fmtMoney(sumCashRev(cashYd)));
+  setEl('rev-wk', fmtMoney(sumCashRev(cashWk)));
+  setEl('rev-mo', fmtMoney(sumCashRev(cashMo)));
+  setEl('rev-yd-sub', cashYd.filter(r => r.category !== 'refund').length + ' платежей');
+  setEl('rev-wk-sub', cashWk.filter(r => r.category !== 'refund').length + ' платежей');
+  setEl('rev-mo-sub', cashMo.filter(r => r.category !== 'refund').length + ' платежей');
 
   // Utilization (12 courts)
   const uYd = calcUtil(filterRows(yd, yd), yd, yd);
@@ -859,24 +880,102 @@ function renderKPIs() {
   setEl('center-mo', fmtPct(cMo.pct));
   setEl('center-mo-sub', cMo.used + ' / ' + cMo.avail + ' корто-ч');
 
-  // Поступления ДС
-  const $Yd = calcCash(yd, yd);
-  const $Wk = calcCash(ws, td);
-  const $Mo = calcCash(ms, td);
-
-  setEl('cash-yd', fmtMoney($Yd.total));
-  setEl('cash-yd-sub', cashBreakdown($Yd));
-  setEl('cash-wk', fmtMoney($Wk.total));
-  setEl('cash-wk-sub', cashBreakdown($Wk));
-  setEl('cash-mo', fmtMoney($Mo.total));
-  setEl('cash-mo-sub', cashBreakdown($Mo));
 }
 
-function cashBreakdown(c) {
-  return 'Карта ' + fmtMoney(c.card) + ' · Нал ' + fmtMoney(c.cash) + ' · Безнал ' + fmtMoney(c.noncash);
+// ════════════════════════════════════════════════════════════════════════════
+// ВЫПОЛНЕНИЕ ПЛАНА (текущий месяц, run-rate) — не зависит от фильтра периода
+// ════════════════════════════════════════════════════════════════════════════
+function planClass(pct) {
+  if (pct == null) return '';
+  if (pct >= 100) return 'plan-ok';
+  if (pct >= 85)  return 'plan-warn';
+  return 'plan-bad';
 }
 
-function sumRev(rows) { return rows.reduce((s, r) => s + r.sum, 0); }
+function renderPlan() {
+  const month = todayStr().slice(0, 7);        // YYYY-MM
+  const p     = allPlans[month];
+  const lbl   = document.getElementById('plan-block-label');
+  const card  = document.getElementById('plan-rev-card');
+  const cwrap = document.getElementById('plan-coach-wrap');
+
+  const hasRev   = p && p.revenue != null && p.revenue > 0;
+  const hasCoach = p && p.coaches && Object.keys(p.coaches).length > 0;
+  if (!hasRev && !hasCoach) {
+    lbl.style.display = 'none'; card.style.display = 'none'; cwrap.style.display = 'none';
+    return;
+  }
+
+  // run-rate: прошедшие дни (включая сегодня) / дней в месяце
+  const now = new Date();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const elapsed = now.getDate();
+  const ms = monthStartStr(0), td = todayStr();
+
+  lbl.style.display = 'block';
+  document.getElementById('plan-month').textContent =
+    '· ' + now.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }) +
+    ' · день ' + elapsed + ' из ' + daysInMonth;
+
+  // ── Выручка ──
+  if (hasRev) {
+    const fact     = sumCashRev(filterCashRows(ms, td));
+    const forecast = elapsed > 0 ? fact / elapsed * daysInMonth : 0;
+    const pctFact  = Math.round(fact / p.revenue * 100);
+    const pctFore  = Math.round(forecast / p.revenue * 100);
+    const cls      = planClass(pctFore);
+
+    const fpct = document.getElementById('plan-rev-fpct');
+    fpct.textContent = pctFore + '%';
+    fpct.className = 'plan-forecast-pct ' + cls;
+
+    const fill = document.getElementById('plan-rev-fill');
+    fill.style.width = Math.min(pctFact, 100) + '%';
+    fill.className = 'plan-bar-fill ' + cls;
+
+    setEl('plan-rev-fact', 'Факт: ' + fmtK(fact) + ' из ' + fmtK(p.revenue) + ' (' + pctFact + '%)');
+    setEl('plan-rev-forecast', 'Прогноз к концу месяца: ' + fmtK(forecast));
+    card.style.display = 'block';
+  } else {
+    card.style.display = 'none';
+  }
+
+  // ── Тренеры (занятия) ──
+  if (hasCoach) {
+    const factByCoach = {};
+    filterRows(ms, td).filter(r => r.category === 'training').forEach(r => {
+      const n = r.coach || 'Не указан';
+      factByCoach[n] = (factByCoach[n] || 0) + 1;
+    });
+
+    const entries = Object.keys(p.coaches).map(name => {
+      const plan     = p.coaches[name];
+      const fact     = factByCoach[name] || 0;
+      const forecast = elapsed > 0 ? fact / elapsed * daysInMonth : 0;
+      const pctFore  = plan > 0 ? Math.round(forecast / plan * 100) : null;
+      return { name, plan, fact, forecast: Math.round(forecast), pctFore };
+    }).sort((a, b) => (b.pctFore || 0) - (a.pctFore || 0));
+
+    let html = '<table class="dtable"><thead><tr><th>Тренер</th>' +
+      '<th class="num">План</th><th class="num">Факт</th><th class="num">Прогноз</th><th class="num">% прогноз</th>' +
+      '</tr></thead><tbody>';
+    entries.forEach(e => {
+      const cls = planClass(e.pctFore);
+      html += `<tr>
+        <td><b>${e.name}</b></td>
+        <td class="num" style="color:#64748b">${e.plan}</td>
+        <td class="num fw7">${e.fact}</td>
+        <td class="num" style="color:#64748b">${e.forecast}</td>
+        <td class="num fw7 ${cls}">${e.pctFore == null ? '—' : e.pctFore + '%'}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    cwrap.innerHTML = '<p class="block-label" style="margin-top:4px">Тренеры · план занятий</p>' + html;
+    cwrap.style.display = 'block';
+  } else {
+    cwrap.style.display = 'none';
+  }
+}
 
 // Центральный корт определяем по полю room (courtTypeOf), а не по subType — у турниров
 // (club/ext) subType всегда обозначает ТИП выручки, а не корт: финал турнира на
@@ -906,12 +1005,13 @@ function calcCenterUtil(rows, from, to) {
 // ════════════════════════════════════════════════════════════════════════════
 // MONTHLY TREND — стековая гистограмма по выбранному периоду
 // ════════════════════════════════════════════════════════════════════════════
-function renderMonthly(rows) {
-  const src = rows || allRows;
+function renderMonthly(cashRows) {
+  const src = cashRows || allCashRows;
   const map = {};
-  src.forEach(r => {
+  const CATS = ['court','training','tournament','inventory','wellness','certificate','account','other'];
+  src.filter(r => r.category !== 'refund').forEach(r => {
     const m = r.date.slice(0, 7);
-    if (!map[m]) map[m] = { court: 0, training: 0, tournament: 0, inventory: 0 };
+    if (!map[m]) { map[m] = {}; CATS.forEach(c => map[m][c] = 0); }
     map[m][r.category] = (map[m][r.category] || 0) + r.sum;
   });
 
@@ -922,7 +1022,9 @@ function renderMonthly(rows) {
     return MNAMES[parseInt(mo, 10) - 1] + ' ' + y.slice(2);
   };
 
-  const datasets = ['court','training','tournament','inventory'].map(cat => ({
+  // Показываем только категории с ненулевыми данными
+  const activeCats = CATS.filter(cat => months.some(m => (map[m][cat] || 0) > 0));
+  const datasets = activeCats.map(cat => ({
     label: CAT_LABEL[cat],
     data:  months.map(m => Math.round(map[m][cat] || 0)),
     backgroundColor: CAT_CLR[cat],
@@ -950,11 +1052,11 @@ function renderMonthly(rows) {
 // ════════════════════════════════════════════════════════════════════════════
 // STRUCTURE — пончик + таблица
 // ════════════════════════════════════════════════════════════════════════════
-function renderStructure(rows) {
+function renderStructure(cashRows) {
   const catTotals = {};
   const subTotals = {};
 
-  rows.forEach(r => {
+  cashRows.filter(r => r.category !== 'refund').forEach(r => {
     catTotals[r.category] = (catTotals[r.category] || 0) + r.sum;
     const key = r.category + '§' + r.subType;
     if (!subTotals[key]) subTotals[key] = { cat: r.category, sub: r.subType, sum: 0, cnt: 0 };
@@ -998,12 +1100,16 @@ function renderStructure(rows) {
 // ════════════════════════════════════════════════════════════════════════════
 // COURT TYPES — горизонтальные бары
 // ════════════════════════════════════════════════════════════════════════════
-function renderCourtTypes(rows) {
-  const courts = rows.filter(r => r.category === 'court');
-  const types  = ['ultra', 'pano', 'single', 'center'];
+function renderCourtTypes(rows, cashRows) {
+  const types = ['ultra', 'pano', 'single', 'center'];
 
-  const rev = types.map(t => Math.round(courts.filter(r => r.subType === t).reduce((s, r) => s + r.sum, 0)));
-  const hrs = types.map(t => Math.round(courts.filter(r => r.subType === t).reduce((s, r) => s + r.duration, 0) * 10) / 10);
+  // Выручка — из Поступлений ДС
+  const cashCourts = cashRows.filter(r => r.category === 'court');
+  const rev = types.map(t => Math.round(cashCourts.filter(r => r.subType === t).reduce((s, r) => s + r.sum, 0)));
+
+  // Часы — из Импорт_1С (факт оказанных услуг)
+  const opsCourts = rows.filter(r => r.category === 'court');
+  const hrs = types.map(t => Math.round(opsCourts.filter(r => r.subType === t).reduce((s, r) => s + r.duration, 0) * 10) / 10);
 
   mkChart('c-court-types', 'bar', types.map(t => SUB_LABEL[t]),
     [{ label: 'Выручка', data: rev, backgroundColor: types.map(t => COURT_CLR[t]), borderRadius: 6 }],
@@ -1245,9 +1351,9 @@ function heatColor(t) {
 // ════════════════════════════════════════════════════════════════════════════
 // WEEKDAY — бары по дням недели
 // ════════════════════════════════════════════════════════════════════════════
-function renderWeekday(rows) {
+function renderWeekday(cashRows) {
   const byDay = Array(7).fill(0);
-  rows.forEach(r => {
+  cashRows.filter(r => r.category !== 'refund').forEach(r => {
     const dow = (new Date(r.date + 'T12:00:00').getDay() + 6) % 7;
     byDay[dow] += r.sum;
   });
@@ -1272,22 +1378,22 @@ function renderCoaches(rows) {
 
   trainRows.forEach(r => {
     const name = r.coach || 'Не указан';
-    if (!byCoach[name]) byCoach[name] = { sum: 0, cnt: 0, types: {} };
-    byCoach[name].sum += r.sum;
+    if (!byCoach[name]) byCoach[name] = { cnt: 0, hours: 0, compl: 0, types: {} };
     byCoach[name].cnt++;
+    byCoach[name].hours += r.duration || 0;
+    if (r.isCompl) byCoach[name].compl++;
     byCoach[name].types[r.subType] = (byCoach[name].types[r.subType] || 0) + 1;
   });
 
-  const sorted = Object.entries(byCoach).sort((a, b) => b[1].sum - a[1].sum);
-  const maxRev = sorted[0]?.[1].sum || 1;
+  const sorted = Object.entries(byCoach).sort((a, b) => b[1].cnt - a[1].cnt);
+  const maxCnt = sorted[0]?.[1].cnt || 1;
 
-  // Table — с разбивкой по видам тренировок в числах
   let html = '<table class="dtable"><thead><tr><th>#</th><th>Тренер</th>' +
     TRAIN_TYPES.map(t => `<th class="num" title="${SUB_LABEL[t]}">${TRAIN_SHORT[t]}</th>`).join('') +
-    '<th class="num">Занятий</th><th class="num">Выручка</th><th class="num">Ср. чек</th></tr></thead><tbody>';
+    '<th class="num">Занятий</th><th class="num">Часов</th><th class="num">Компл.</th></tr></thead><tbody>';
   sorted.forEach(([name, d], i) => {
-    const avg = d.cnt > 0 ? d.sum / d.cnt : 0;
-    const bw  = Math.round(d.sum / maxRev * 72);
+    const hrs = Math.round(d.hours * 10) / 10;
+    const bw  = Math.round(d.cnt / maxCnt * 72);
     const esc = name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     const typeCells = TRAIN_TYPES.map(t => {
       const v = d.types[t] || 0;
@@ -1297,15 +1403,14 @@ function renderCoaches(rows) {
       <td style="color:#94a3b8;font-size:11px">${i + 1}</td>
       <td><b>${name}</b><span class="ibar" style="width:${bw}px;background:#0ea5e9"></span></td>
       ${typeCells}
-      <td class="num">${d.cnt}</td>
-      <td class="num fw7">${fmtMoney(d.sum)}</td>
-      <td class="num" style="color:#64748b">${fmtMoney(avg)}</td>
+      <td class="num fw7">${d.cnt}</td>
+      <td class="num" style="color:#64748b">${hrs}</td>
+      <td class="num" style="color:${d.compl ? '#059669' : '#cbd5e1'}">${d.compl || '—'}</td>
     </tr>`;
   });
   html += '</tbody></table>';
   document.getElementById('coach-table-wrap').innerHTML = html;
 
-  // Stacked bar
   const names    = sorted.map(([n]) => n);
   const datasets = TRAIN_TYPES.map((t, ti) => ({
     label: SUB_LABEL[t],
@@ -1320,9 +1425,7 @@ function renderCoaches(rows) {
       x: { stacked: true, grid: { display: false }, ticks: { maxRotation: 30 } },
       y: { stacked: true, ticks: { callback: v => Number.isInteger(v) ? v : '' } },
     },
-    plugins: {
-      legend: { position: 'bottom' },
-    },
+    plugins: { legend: { position: 'bottom' } },
   });
 
   window._coachData = byCoach;
@@ -1352,7 +1455,7 @@ function showCoachDetail(name) {
       cutout: '52%',
       plugins: {
         legend: { position: 'bottom' },
-        tooltip: { callbacks: { label: ctx => ' ' + ctx.raw + ' зан. (' + Math.round(ctx.raw / total * 100) + '%)' } },
+        tooltip: { callbacks: { label: ctx => ' ' + ctx.raw + ' зан. · ' + Math.round(ctx.raw / total * 100) + '%' } },
       },
     }
   );
@@ -1363,26 +1466,27 @@ function showCoachDetail(name) {
 // ════════════════════════════════════════════════════════════════════════════
 // EFFICIENCY
 // ════════════════════════════════════════════════════════════════════════════
-function renderEfficiency(rows, from, to) {
-  const total   = sumRev(rows);
+function renderEfficiency(rows, cashRows, from, to) {
+  const total   = sumCashRev(cashRows);
   const util    = calcUtil(rows, from, to);
   const revpash = util.avail > 0 ? total / util.avail : 0;
 
   setEl('kpi-revpash', fmtMoney(revpash));
 
-  const bookings = rows.filter(r => r.category !== 'inventory');
-  const avgCheck = bookings.length > 0 ? total / bookings.length : 0;
+  const payCount = cashRows.filter(r => r.category !== 'refund').length;
+  const avgCheck = payCount > 0 ? total / payCount : 0;
   setEl('kpi-avgcheck', fmtMoney(avgCheck));
-  setEl('kpi-avgcheck-sub', bookings.length + ' бронирований');
+  setEl('kpi-avgcheck-sub', payCount + ' платежей');
 
-  const peakRev = rows.filter(r => {
-    const h = parseInt((r.time || '').split(':')[0], 10);
-    return h >= 18;
-  }).reduce((s, r) => s + r.sum, 0);
-
-  const peakPct = total > 0 ? peakRev / total * 100 : 0;
+  // Пиковые часы — загрузка кортов 18:00+ (из SHEET_OPS)
+  const peakRows  = rows.filter(r => r.category !== 'inventory' && courtTypeOf(r) !== 'center');
+  const peakUsed  = peakRows.filter(r => parseInt((r.time || '').split(':')[0], 10) >= 18)
+                            .reduce((s, r) => s + r.duration, 0);
+  const days      = Math.round((new Date(to + 'T12:00:00') - new Date(from + 'T12:00:00')) / 86400000) + 1;
+  const peakAvail = COURTS * 5 * days; // 18–23 = 5 часов
+  const peakPct   = peakAvail > 0 ? peakUsed / peakAvail * 100 : 0;
   setEl('kpi-peak', fmtPct(peakPct));
-  setEl('kpi-peak-sub', fmtMoney(peakRev) + ' из ' + fmtMoney(total));
+  setEl('kpi-peak-sub', Math.round(peakUsed * 10) / 10 + ' / ' + peakAvail + ' корто-ч');
 }
 
 // ════════════════════════════════════════════════════════════════════════════
