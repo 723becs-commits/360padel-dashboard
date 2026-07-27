@@ -730,9 +730,11 @@ function hide(id)        { document.getElementById(id)?.classList.add('hidden');
 function filterRows(from, to)     { return allRows.filter(r => r.date >= from && r.date <= to); }
 function filterCashRows(from, to) { return allCashRows.filter(r => r.date >= from && r.date <= to); }
 
-// Выручка из Поступлений ДС (исключаем возвраты)
+// Выручка из Поступлений ДС (исключаем возвраты).
+// parseFloat-защита: одна строка с нечисловой суммой не должна ронять весь итог в NaN.
 function sumCashRev(cashRows) {
-  return cashRows.filter(r => r.category !== 'refund').reduce((s, r) => s + r.sum, 0);
+  return cashRows.filter(r => r.category !== 'refund')
+                 .reduce((s, r) => s + (parseFloat(r.sum) || 0), 0);
 }
 
 function calcCash(from, to) {
