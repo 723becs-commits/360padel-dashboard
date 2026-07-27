@@ -128,6 +128,22 @@
     .plan-ok   { color: #059669; } .plan-bar-fill.plan-ok   { background: #10b981; }
     .plan-warn { color: #d97706; } .plan-bar-fill.plan-warn { background: #f59e0b; }
     .plan-bad  { color: #dc2626; } .plan-bar-fill.plan-bad  { background: #ef4444; }
+    .plan-nums { display: flex; gap: 32px; margin: 10px 0 6px; }
+    .plan-stat { display: flex; flex-direction: column; }
+    .plan-stat-val { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.1; }
+    .plan-stat-lbl { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; margin-top: 3px; }
+
+    /* ── Динамика ──────────────────────────────────────────────────────────── */
+    .dyn-toggle { display: flex; gap: 6px; margin: 0 0 12px; }
+    .dyn-btn {
+      padding: 5px 14px; border: 1px solid #e2e8f0; background: #fff; border-radius: 8px;
+      font-size: 12px; font-weight: 600; color: #64748b; cursor: pointer;
+    }
+    .dyn-btn.active { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+    .dyn-up   { color: #059669; font-weight: 700; }
+    .dyn-down { color: #dc2626; font-weight: 700; }
+    .dyn-flat { color: #94a3b8; }
+    .dtable td.sub-row { padding-left: 22px; color: #64748b; font-weight: 400; }
 
     /* ── Section ─────────────────────────────────────────────────────────────── */
     .section {
@@ -192,6 +208,7 @@
     .dtable tr.clickable:hover td { background: #eff6ff; }
     .dtable tr.selected td { background: #dbeafe !important; }
     .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .dtable th.num { text-align: right; }
     .fw7 { font-weight: 700; }
 
     /* ── Inline bar ──────────────────────────────────────────────────────────── */
@@ -346,9 +363,16 @@
     <!-- ─────────────── Выполнение плана (текущий месяц) ─────────────── -->
     <p class="block-label" id="plan-block-label" style="display:none">🎯 Выполнение плана <span id="plan-month" style="font-weight:400;color:#94a3b8"></span></p>
     <div id="plan-rev-card" class="plan-card" style="display:none">
-      <div class="plan-head">
-        <span class="plan-title">Выручка центра</span>
-        <span class="plan-forecast-pct" id="plan-rev-fpct">—</span>
+      <div class="plan-title">Выручка центра</div>
+      <div class="plan-nums">
+        <div class="plan-stat">
+          <span class="plan-stat-val" id="plan-rev-factpct">—</span>
+          <span class="plan-stat-lbl">факт сейчас</span>
+        </div>
+        <div class="plan-stat">
+          <span class="plan-stat-val" id="plan-rev-forepct">—</span>
+          <span class="plan-stat-lbl">прогноз к концу месяца</span>
+        </div>
       </div>
       <div class="plan-bar"><div class="plan-bar-fill" id="plan-rev-fill"></div></div>
       <div class="plan-sub">
@@ -357,6 +381,15 @@
       </div>
     </div>
     <div id="plan-coach-wrap" style="display:none"></div>
+
+    <!-- ─────────────── Динамика (накопительно к текущему дню) ─────────────── -->
+    <p class="block-label" style="margin-top:6px">📈 Динамика <span style="font-weight:400;color:#94a3b8">· накопительно к текущему дню</span></p>
+    <div class="dyn-toggle">
+      <button class="dyn-btn" data-mode="week" onclick="setDynMode('week')">Неделя</button>
+      <button class="dyn-btn active" data-mode="month" onclick="setDynMode('month')">Месяц</button>
+      <button class="dyn-btn" data-mode="year" onclick="setDynMode('year')">Год</button>
+    </div>
+    <div id="dyn-table-wrap"></div>
 
     <!-- ─────────────── Error banner ─────────────── -->
     <div class="error-banner" id="error-banner"></div>
@@ -796,6 +829,7 @@ function setQuick(type) {
 function renderAll() {
   renderKPIs();
   try { renderPlan(); } catch(e) { console.error('renderPlan', e); }
+  try { renderDynamics(); } catch(e) { console.error('renderDynamics', e); }
   applyFilter(); // renderMonthly вызывается внутри renderFiltered
 }
 
@@ -919,30 +953,37 @@ function renderPlan() {
     '· ' + now.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }) +
     ' · день ' + elapsed + ' из ' + daysInMonth;
 
-  // ── Выручка ──
+  // ── Выручка (обе цифры: факт сейчас + прогноз к концу месяца) ──
   if (hasRev) {
     const fact     = sumCashRev(filterCashRows(ms, td));
     const forecast = elapsed > 0 ? fact / elapsed * daysInMonth : 0;
     const pctFact  = Math.round(fact / p.revenue * 100);
     const pctFore  = Math.round(forecast / p.revenue * 100);
-    const cls      = planClass(pctFore);
 
-    const fpct = document.getElementById('plan-rev-fpct');
-    fpct.textContent = pctFore + '%';
-    fpct.className = 'plan-forecast-pct ' + cls;
+    // Факт — нейтральным цветом (в середине месяца он объективно ниже),
+    // прогноз — со светофором, чтобы обе цифры были на виду и честны.
+    const factEl = document.getElementById('plan-rev-factpct');
+    factEl.textContent = pctFact + '%';
+    factEl.className = 'plan-stat-val';
+    factEl.style.color = '#1e293b';
+
+    const foreEl = document.getElementById('plan-rev-forepct');
+    foreEl.textContent = pctFore + '%';
+    foreEl.className = 'plan-stat-val ' + planClass(pctFore);
+    foreEl.style.color = '';
 
     const fill = document.getElementById('plan-rev-fill');
     fill.style.width = Math.min(pctFact, 100) + '%';
-    fill.className = 'plan-bar-fill ' + cls;
+    fill.className = 'plan-bar-fill ' + planClass(pctFore);
 
-    setEl('plan-rev-fact', 'Факт: ' + fmtK(fact) + ' из ' + fmtK(p.revenue) + ' (' + pctFact + '%)');
-    setEl('plan-rev-forecast', 'Прогноз к концу месяца: ' + fmtK(forecast));
+    setEl('plan-rev-fact', 'Факт: ' + fmtK(fact) + ' из ' + fmtK(p.revenue));
+    setEl('plan-rev-forecast', 'Прогноз: ' + fmtK(forecast) + ' · день ' + elapsed + ' из ' + daysInMonth);
     card.style.display = 'block';
   } else {
     card.style.display = 'none';
   }
 
-  // ── Тренеры (занятия) ──
+  // ── Тренеры (занятия): план / факт / % выполнения ──
   if (hasCoach) {
     const factByCoach = {};
     filterRows(ms, td).filter(r => r.category === 'training').forEach(r => {
@@ -951,24 +992,23 @@ function renderPlan() {
     });
 
     const entries = Object.keys(p.coaches).map(name => {
-      const plan     = p.coaches[name];
-      const fact     = factByCoach[name] || 0;
-      const forecast = elapsed > 0 ? fact / elapsed * daysInMonth : 0;
-      const pctFore  = plan > 0 ? Math.round(forecast / plan * 100) : null;
-      return { name, plan, fact, forecast: Math.round(forecast), pctFore };
-    }).sort((a, b) => (b.pctFore || 0) - (a.pctFore || 0));
+      const plan = p.coaches[name];
+      // План — по фамилии, в «Операции» полное имя → суммируем всех, кто совпал
+      let fact = 0;
+      Object.keys(factByCoach).forEach(dn => { if (coachMatch(dn, name)) fact += factByCoach[dn]; });
+      const pct = plan > 0 ? Math.round(fact / plan * 100) : null;
+      return { name, plan, fact, pct };
+    }).sort((a, b) => (b.pct || 0) - (a.pct || 0));
 
     let html = '<table class="dtable"><thead><tr><th>Тренер</th>' +
-      '<th class="num">План</th><th class="num">Факт</th><th class="num">Прогноз</th><th class="num">% прогноз</th>' +
+      '<th class="num">План</th><th class="num">Факт</th><th class="num">% выполнения</th>' +
       '</tr></thead><tbody>';
     entries.forEach(e => {
-      const cls = planClass(e.pctFore);
       html += `<tr>
         <td><b>${e.name}</b></td>
         <td class="num" style="color:#64748b">${e.plan}</td>
         <td class="num fw7">${e.fact}</td>
-        <td class="num" style="color:#64748b">${e.forecast}</td>
-        <td class="num fw7 ${cls}">${e.pctFore == null ? '—' : e.pctFore + '%'}</td>
+        <td class="num fw7">${e.pct == null ? '—' : e.pct + '%'}</td>
       </tr>`;
     });
     html += '</tbody></table>';
@@ -977,6 +1017,121 @@ function renderPlan() {
   } else {
     cwrap.style.display = 'none';
   }
+}
+
+// Сопоставление имени: план по фамилии («Васильев»), в «Операции» полное имя
+// («Васильев Василий Владимирович»). Матч, если полное имя начинается с фамилии
+// или содержит её отдельным словом.
+function coachMatch(dataName, planName) {
+  const d = (dataName || '').toLowerCase().trim();
+  const p = (planName || '').toLowerCase().trim();
+  if (!p || !d) return false;
+  return d === p || d.startsWith(p + ' ') || d.split(/[\s.]+/).indexOf(p) !== -1 || d.startsWith(p);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ДИНАМИКА — накопительно к текущему относительному дню (WoW / MoM / YoY)
+// ════════════════════════════════════════════════════════════════════════════
+let dynMode = 'month';
+
+function setDynMode(mode) {
+  dynMode = mode;
+  document.querySelectorAll('.dyn-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  renderDynamics();
+}
+
+function isoLocal(d) {
+  return d.getFullYear() + '-' +
+    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+    String(d.getDate()).padStart(2, '0');
+}
+
+// Диапазоны «с начала периода по тот же относительный день», 0 / −1 / −2 периода назад
+function cumRanges(mode) {
+  const now = new Date();
+  const out = [];
+  if (mode === 'month') {
+    const day = now.getDate();
+    for (let off = 0; off >= -2; off--) {
+      const start   = new Date(now.getFullYear(), now.getMonth() + off, 1);
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + off + 1, 0).getDate();
+      const endDay  = Math.min(day, lastDay);
+      const end     = new Date(now.getFullYear(), now.getMonth() + off, endDay);
+      out.push({ from: isoLocal(start), to: isoLocal(end),
+        label: start.toLocaleDateString('ru-RU', { month: 'short' }) + ' 1–' + endDay });
+    }
+  } else if (mode === 'week') {
+    const monday = new Date(now); monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+    const idx = (now.getDay() + 6) % 7; // сколько дней прошло в неделе (0=пн)
+    const names = ['Эта нед.', 'Пред. нед.', '2 нед. назад'];
+    for (let off = 0; off >= -2; off--) {
+      const s = new Date(monday); s.setDate(monday.getDate() + off * 7);
+      const e = new Date(s);      e.setDate(s.getDate() + idx);
+      out.push({ from: isoLocal(s), to: isoLocal(e), label: names[-off] });
+    }
+  } else { // year
+    for (let off = 0; off >= -2; off--) {
+      const s = new Date(now.getFullYear() + off, 0, 1);
+      const e = new Date(now.getFullYear() + off, now.getMonth(), now.getDate());
+      out.push({ from: isoLocal(s), to: isoLocal(e), label: String(now.getFullYear() + off) + ' YTD' });
+    }
+  }
+  return out;
+}
+
+function aggRange(from, to) {
+  const cr   = filterCashRows(from, to);
+  const paid = cr.filter(r => r.category !== 'refund');
+  const rev  = paid.reduce((s, r) => s + (parseFloat(r.sum) || 0), 0);
+  const byCat = { court: 0, training: 0, tournament: 0, inventory: 0 };
+  paid.forEach(r => { if (byCat[r.category] !== undefined) byCat[r.category] += (parseFloat(r.sum) || 0); });
+  const payCount = paid.filter(r => (parseFloat(r.sum) || 0) !== 0).length;
+  const avg      = payCount ? rev / payCount : 0;
+  const orows    = filterRows(from, to);
+  const sessions = orows.filter(r => r.category === 'training').length;
+  const util     = calcUtil(orows, from, to).pct;
+  return { rev, byCat, avg, sessions, util };
+}
+
+function dynDelta(cur, prev) {
+  if (!prev) return '<span class="dyn-flat">—</span>';
+  const d = (cur - prev) / prev * 100;
+  const cls = d > 0.5 ? 'dyn-up' : d < -0.5 ? 'dyn-down' : 'dyn-flat';
+  const arr = d > 0.5 ? '▲' : d < -0.5 ? '▼' : '→';
+  return `<span class="${cls}">${arr} ${d > 0 ? '+' : ''}${Math.round(d)}%</span>`;
+}
+
+function renderDynamics() {
+  const wrap = document.getElementById('dyn-table-wrap');
+  if (!wrap) return;
+  const A   = cumRanges(dynMode).map(r => Object.assign({}, r, aggRange(r.from, r.to)));
+  const cur = A[0];
+
+  const rows = [
+    ['Выручка',        a => a.rev,              fmtK,               false],
+    ['Корты',          a => a.byCat.court,      fmtK,               true],
+    ['Тренировки',     a => a.byCat.training,   fmtK,               true],
+    ['Турниры',        a => a.byCat.tournament, fmtK,               true],
+    ['Инвентарь',      a => a.byCat.inventory,  fmtK,               true],
+    ['Средний чек',    a => a.avg,              fmtK,               false],
+    ['Тренировок, шт', a => a.sessions,         v => String(v),     false],
+    ['Утилизация',     a => a.util,             fmtPct,             false],
+  ];
+
+  let html = '<div style="overflow-x:auto"><table class="dtable"><thead><tr><th>Показатель</th>';
+  A.forEach((a, i) => { html += `<th class="num">${a.label}</th>` + (i > 0 ? '<th class="num">Δ к тек.</th>' : ''); });
+  html += '</tr></thead><tbody>';
+
+  rows.forEach(([label, acc, fmt, isSub]) => {
+    html += `<tr><td class="${isSub ? 'sub-row' : 'fw7'}">${isSub ? '├ ' : ''}${label}</td>`;
+    A.forEach((a, i) => {
+      html += `<td class="num${isSub ? '' : ' fw7'}">${fmt(acc(a))}</td>`;
+      if (i > 0) html += `<td class="num">${dynDelta(acc(cur), acc(a))}</td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  wrap.innerHTML = html;
 }
 
 // Центральный корт определяем по полю room (courtTypeOf), а не по subType — у турниров
