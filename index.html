@@ -429,6 +429,28 @@
       </div>
     </div>
 
+    <!-- ─────────────── Касса vs оказанные услуги ─────────────── -->
+    <div id="cvs-block" style="display:none">
+      <p class="block-label">💰 Касса vs оказанные услуги <span style="font-weight:400;color:#94a3b8">· за выбранный период</span></p>
+      <div class="kpi-grid" style="grid-template-columns: repeat(3,1fr)">
+        <div class="kpi-card" style="--accent:#0ea5e9">
+          <div class="kpi-label">Касса (пришло денег)</div>
+          <div class="kpi-value" id="cvs-cash">—</div>
+          <div class="kpi-sub">Поступления ДС</div>
+        </div>
+        <div class="kpi-card" style="--accent:#10b981">
+          <div class="kpi-label">Оказанные услуги</div>
+          <div class="kpi-value accent-green" id="cvs-serv">—</div>
+          <div class="kpi-sub">оплачено за услуги периода</div>
+        </div>
+        <div class="kpi-card" style="--accent:#7c3aed">
+          <div class="kpi-label">Δ Предоплаты / депозиты</div>
+          <div class="kpi-value" id="cvs-delta">—</div>
+          <div class="kpi-sub" id="cvs-delta-sub">касса − услуги</div>
+        </div>
+      </div>
+    </div>
+
     <!-- ─────────────── Фильтр периода ─────────────── -->
     <div class="filter-bar">
       <span class="filter-label">Период</span>
@@ -596,6 +618,8 @@ const SUB_LABEL = {
   t_ofp: 'Персональная ОФП',
   t_split3: 'Сплит 3', t_split4: 'Сплит 4',
   t_group: 'Групповая (новички)', t_trial: 'Пробное / компл.',
+  t_kids_trial: 'Детское пробное', t_kids_68: 'Детская 6-8', t_kids_911: 'Детская 9-11',
+  t_kids_1214: 'Детская 12-14', t_kids: 'Детская группа',
   club: 'Клубный турнир', ext: 'Внешний турнир', inv_1c: 'Инвентарь',
   massage: 'Массаж', therapy: 'Прессотерапия', cert: 'Сертификат',
   topup: 'Взнос на счёт',
@@ -607,9 +631,9 @@ const CAT_CLR  = {
   wellness:'#14b8a6', certificate:'#ec4899', account:'#0ea5e9', other:'#94a3b8', refund:'#f87171',
 };
 const COURT_CLR = { ultra:'#0ea5e9', pano:'#6366f1', single:'#ec4899', center:'#f97316' };
-const TRAIN_TYPES  = ['t_ind','t_ofp','t_pair','t_pair_ofp','t_split3','t_split4','t_group','t_trial'];
-const TRAIN_CLR    = ['#10b981','#059669','#34d399','#6ee7b7','#0ea5e9','#6366f1','#a78bfa','#f59e0b'];
-const TRAIN_SHORT  = { t_ind: 'Перс.', t_ofp: 'ОФП', t_pair: 'Парн.', t_pair_ofp: 'Парн.ОФП', t_split3: 'Спл.3', t_split4: 'Спл.4', t_group: 'Групп.', t_trial: 'Пробн.' };
+const TRAIN_TYPES  = ['t_ind','t_ofp','t_pair','t_pair_ofp','t_split3','t_split4','t_group','t_trial','t_kids_trial','t_kids_68','t_kids_911','t_kids_1214'];
+const TRAIN_CLR    = ['#10b981','#059669','#34d399','#6ee7b7','#0ea5e9','#6366f1','#a78bfa','#f59e0b','#f9a8d4','#f472b6','#ec4899','#db2777'];
+const TRAIN_SHORT  = { t_ind: 'Перс.', t_ofp: 'ОФП', t_pair: 'Парн.', t_pair_ofp: 'Парн.ОФП', t_split3: 'Спл.3', t_split4: 'Спл.4', t_group: 'Групп.', t_trial: 'Пробн.', t_kids_trial: 'Дет.пробн', t_kids_68: 'Дет.6-8', t_kids_911: 'Дет.9-11', t_kids_1214: 'Дет.12-14' };
 
 // ════════════════════════════════════════════════════════════════════════════
 // STATE
@@ -773,11 +797,11 @@ function hide(id)        { document.getElementById(id)?.classList.add('hidden');
 function filterRows(from, to)     { return allRows.filter(r => r.date >= from && r.date <= to); }
 function filterCashRows(from, to) { return allCashRows.filter(r => r.date >= from && r.date <= to); }
 
-// Выручка из Поступлений ДС (исключаем возвраты).
-// parseFloat-защита: одна строка с нечисловой суммой не должна ронять весь итог в NaN.
+// Выручка из Поступлений ДС, КАССОВЫЙ метод: суммируем все поступления,
+// возвраты (хранятся отрицательными) при этом вычитаются — как в P&L и в боте.
+// parseFloat-защита: строка с нечисловой суммой не должна ронять итог в NaN.
 function sumCashRev(cashRows) {
-  return cashRows.filter(r => r.category !== 'refund')
-                 .reduce((s, r) => s + (parseFloat(r.sum) || 0), 0);
+  return cashRows.reduce((s, r) => s + (parseFloat(r.sum) || 0), 0);
 }
 
 function calcCash(from, to) {
@@ -849,6 +873,7 @@ function renderFiltered(from, to) {
   const cashRows = filterCashRows(from, to);     // SHEET_CASH — выручка
 
   renderPeriodKPIs(rows, cashRows, from, to);
+  try { renderCashVsServices(rows, cashRows); } catch(e) { console.error('renderCashVsServices', e); }
 
   try { renderMonthly(cashRows); }      catch(e) { console.error('renderMonthly', e); }
   try { renderStructure(cashRows); }    catch(e) { console.error('renderStructure', e); }
@@ -859,6 +884,24 @@ function renderFiltered(from, to) {
   try { renderWeekday(cashRows); }      catch(e) { console.error('renderWeekday', e); }
   try { renderCoaches(rows); }          catch(e) { console.error('renderCoaches', e); }
   try { renderEfficiency(rows, cashRows, from, to); } catch(e) { console.error('renderEfficiency', e); }
+}
+
+// Касса (Поступления, деньги пришли) vs оказанные услуги (оплата за услуги периода из Операций).
+// Δ>0 — приток предоплат/пополнений (деньги наперёд); Δ<0 — проедаются ранее внесённые авансы.
+function renderCashVsServices(rows, cashRows) {
+  const cash  = sumCashRev(cashRows);
+  const serv  = rows.reduce((s, r) => s + (r.revenue || 0), 0);
+  const delta = cash - serv;
+
+  setEl('cvs-cash', fmtMoney(cash));
+  setEl('cvs-serv', fmtMoney(serv));
+  const d = document.getElementById('cvs-delta');
+  d.textContent = (delta >= 0 ? '+' : '−') + fmtMoney(Math.abs(delta));
+  d.style.color = delta >= 0 ? '#7c3aed' : '#dc2626';
+  setEl('cvs-delta-sub', delta >= 0 ? 'предоплаты/пополнения (деньги наперёд)' : 'проедаются авансы');
+
+  const blk = document.getElementById('cvs-block');
+  if (blk) blk.style.display = 'block';
 }
 
 function renderPeriodKPIs(rows, cashRows, from, to) {
