@@ -1205,7 +1205,7 @@ function renderDynamics() {
 function calcUtil(rows, from, to) {
   const days  = Math.round((new Date(to + 'T12:00:00') - new Date(from + 'T12:00:00')) / 86400000) + 1;
   const avail = COURTS * WORK_HRS * days;
-  const used  = rows.filter(r => r.category !== 'inventory' && courtTypeOf(r) !== 'center').reduce((s, r) => s + r.duration, 0);
+  const used  = rows.filter(r => r.category !== 'inventory' && r.category !== 'wellness' && courtTypeOf(r) !== 'center').reduce((s, r) => s + r.duration, 0);
   return {
     pct:   avail > 0 ? (used / avail * 100) : 0,
     used:  Math.round(used * 10) / 10,
@@ -1701,7 +1701,7 @@ function renderEfficiency(rows, cashRows, from, to) {
   setEl('kpi-avgcheck-sub', payCount + ' платежей');
 
   // Пиковые часы — загрузка кортов 18:00+ (из SHEET_OPS)
-  const peakRows  = rows.filter(r => r.category !== 'inventory' && courtTypeOf(r) !== 'center');
+  const peakRows  = rows.filter(r => r.category !== 'inventory' && r.category !== 'wellness' && courtTypeOf(r) !== 'center');
   const peakUsed  = peakRows.filter(r => parseInt((r.time || '').split(':')[0], 10) >= 18)
                             .reduce((s, r) => s + r.duration, 0);
   const days      = Math.round((new Date(to + 'T12:00:00') - new Date(from + 'T12:00:00')) / 86400000) + 1;
