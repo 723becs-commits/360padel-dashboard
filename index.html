@@ -705,6 +705,7 @@ async function doLogin() {
     authKey = key;
     sessionStorage.setItem('dashKey', key);
     allRows = data.rows || [];
+    canonicalizeCoaches(allRows);
     allCashRows = data.cashRows || [];
     allPlans = data.plans || {};
     openDashboard(data.ts);
@@ -712,6 +713,45 @@ async function doLogin() {
     setEl('login-error', 'Ошибка соединения: ' + e.message);
     btn.disabled = false; btn.textContent = 'Войти';
   }
+}
+
+// ── Объединение тренеров: карточки поменяли в середине августа, теперь пишутся с отчеством →
+// «Фамилия Имя» и «Фамилия Имя Отчество» = один тренер. Схлопываем к полному ФИО.
+// Защита от тёзок: если у одной Фамилии+Имени несколько РАЗНЫХ отчеств — не сливаем.
+function buildNameCanon(namesSet) {
+  const groups = {};
+  namesSet.forEach(nm => {
+    const t = nm.split(/\s+/);
+    const key = t.length >= 2 ? (t[0].toLowerCase() + '|' + t[1].toLowerCase()) : (nm.toLowerCase() + '|');
+    (groups[key] = groups[key] || []).push(nm);
+  });
+  const wc = s => s.split(/\s+/).length;
+  const longest = arr => arr.reduce((a, b) => (wc(b) > wc(a) || (wc(b) === wc(a) && b.length > a.length)) ? b : a);
+  const cmap = {};
+  Object.values(groups).forEach(recsRaw => {
+    const recs = Array.from(new Set(recsRaw));
+    const patr = {}; const bares = [];
+    recs.forEach(nm => {
+      const t = nm.split(/\s+/);
+      if (t.length >= 3) (patr[t[2].toLowerCase()] = patr[t[2].toLowerCase()] || []).push(nm);
+      else bares.push(nm);
+    });
+    const pk = Object.keys(patr);
+    if (pk.length <= 1) {
+      const can = longest(recs);
+      recs.forEach(nm => cmap[nm] = can);
+    } else {
+      pk.forEach(p => { const can = longest(patr[p]); patr[p].forEach(nm => cmap[nm] = can); });
+      bares.forEach(nm => cmap[nm] = nm);
+    }
+  });
+  return cmap;
+}
+function canonicalizeCoaches(rows) {
+  const names = new Set();
+  rows.forEach(r => { if (r.category === 'training' && r.coach) names.add(r.coach); });
+  const cmap = buildNameCanon(names);
+  rows.forEach(r => { if (r.coach && cmap[r.coach]) r.coach = cmap[r.coach]; });
 }
 
 async function loadData() {
@@ -733,6 +773,7 @@ async function loadData() {
     }
 
     allRows = data.rows;
+    canonicalizeCoaches(allRows);
     allCashRows = data.cashRows || [];
     allPlans = data.plans || {};
     setEl('update-ts', 'Обновлено: ' + fmtTs(data.ts));
