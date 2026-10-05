@@ -131,6 +131,14 @@
     .plan-ends { display: flex; justify-content: space-between; align-items: baseline; margin: 10px 0 6px; }
     .plan-stat-val { font-size: 23px; font-weight: 800; letter-spacing: -0.5px; }
     .plan-stat-lbl { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; }
+    /* метка «план на дату» на шкале выполнения и мини-шкалы по направлениям */
+    .plan-mark { position: absolute; top: 0; bottom: 0; width: 2px; background: #1e293b; opacity: .75; }
+    .plan-mini { display: inline-block; vertical-align: middle; width: 70px; height: 6px; border-radius: 4px; background: #eef2f7; overflow: hidden; margin-right: 6px; }
+    .plan-mini > span { display: block; height: 100%; border-radius: 4px; }
+    .plan-mini > span.plan-ok { background: #10b981; } .plan-mini > span.plan-warn { background: #f59e0b; } .plan-mini > span.plan-bad { background: #ef4444; }
+    .plan-note { font-size: 10.5px; color: #94a3b8; margin-top: 8px; line-height: 1.45; }
+    .plan-dir { margin-top: 4px; }
+    .mom-delta-pos { color: #059669; font-weight: 700; } .mom-delta-neg { color: #dc2626; font-weight: 700; }
 
     /* ── Динамика ──────────────────────────────────────────────────────────── */
     .dyn-controls { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 0 0 12px; align-items: center; }
@@ -359,6 +367,7 @@
 
     <!-- ─────────────── Выполнение плана (текущий месяц) ─────────────── -->
     <p class="block-label" id="plan-block-label" style="display:none">🎯 Выполнение плана <span id="plan-month" style="font-weight:400;color:#94a3b8"></span></p>
+    <div id="plan-fact-wrap"></div>
     <div id="plan-rev-card" class="plan-card" style="display:none">
       <div class="plan-title">Выручка центра</div>
       <div class="plan-ends">
@@ -372,6 +381,23 @@
       </div>
     </div>
     <div id="plan-coach-wrap" style="display:none"></div>
+
+    <!-- ─────────────── Выручка нарастающим итогом: этот месяц к прошлым ─────────────── -->
+    <div class="section" id="mom-section" style="display:none">
+      <div class="section-title">
+        <span class="dot" style="background:#0ea5e9"></span>Выручка нарастающим итогом
+        <span class="section-period" id="mom-sub">этот месяц к прошлым за то же число дней</span>
+      </div>
+      <div class="dyn-controls" style="margin-top:12px">
+        <div class="dyn-group" id="mom-basis">
+          <span class="dyn-group-lbl">считать по</span>
+          <button class="dyn-btn active" data-basis="cash">Кассе</button>
+          <button class="dyn-btn" data-basis="ops">Услугам</button>
+        </div>
+      </div>
+      <div id="mom-table"></div>
+      <div style="margin-top:12px" class="chart-wrap"><canvas id="c-mom"></canvas></div>
+    </div>
 
     <!-- ─────────────── Динамика показателя по периодам ─────────────── -->
     <div class="section">
@@ -641,6 +667,7 @@ const TRAIN_SHORT  = { t_ind: 'Перс.', t_ofp: 'ОФП', t_pair: 'Парн.',
 let allRows = [];
 let allCashRows = [];
 let allPlans = {};
+let allPlanFact = null;   // план/факт по направлениям + накопительный план, считается на сервере (getPlanFact)
 let charts  = {};
 let authKey = '';
 
@@ -708,6 +735,7 @@ async function doLogin() {
     canonicalizeCoaches(allRows);
     allCashRows = data.cashRows || [];
     allPlans = data.plans || {};
+    allPlanFact = data.planFact || null;
     openDashboard(data.ts);
   } catch (e) {
     setEl('login-error', 'Ошибка соединения: ' + e.message);
@@ -776,6 +804,7 @@ async function loadData() {
     canonicalizeCoaches(allRows);
     allCashRows = data.cashRows || [];
     allPlans = data.plans || {};
+    allPlanFact = data.planFact || null;
     setEl('update-ts', 'Обновлено: ' + fmtTs(data.ts));
 
     // Гарантируем, что даты установлены перед рендером
@@ -904,6 +933,7 @@ function setQuick(type) {
 function renderAll() {
   renderKPIs();
   try { renderPlan(); } catch(e) { console.error('renderPlan', e); }
+  try { renderMom(); } catch(e) { console.error('renderMom', e); }
   try { renderDynamics(); } catch(e) { console.error('renderDynamics', e); }
   applyFilter(); // renderMonthly вызывается внутри renderFiltered
 }
@@ -1028,11 +1058,16 @@ function renderPlan() {
   const lbl   = document.getElementById('plan-block-label');
   const card  = document.getElementById('plan-rev-card');
   const cwrap = document.getElementById('plan-coach-wrap');
+  const fwrap = document.getElementById('plan-fact-wrap');
+  // Новый расчёт с сервера (оказанные услуги, по направлениям, накопительный план по дням недели).
+  // Если сервер ещё старый и planFact не пришёл — работает прежняя карточка по кассе.
+  const usePF = !!(allPlanFact && allPlanFact.month === month && fwrap);
 
   const hasRev   = p && p.revenue != null && p.revenue > 0;
   const hasCoach = p && p.coaches && Object.keys(p.coaches).length > 0;
   if (!hasRev && !hasCoach) {
     lbl.style.display = 'none'; card.style.display = 'none'; cwrap.style.display = 'none';
+    if (fwrap) fwrap.innerHTML = '';
     return;
   }
 
@@ -1047,8 +1082,21 @@ function renderPlan() {
     '· ' + now.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }) +
     ' · день ' + elapsed + ' из ' + daysInMonth;
 
-  // ── Выручка (обе цифры: факт сейчас + прогноз к концу месяца) ──
-  if (hasRev) {
+  // ── Выручка: новый блок (план/факт, накопительный план, направления) ──
+  if (usePF) {
+    renderPlanFact(allPlanFact, fwrap);
+    card.style.display = 'none';
+    document.getElementById('plan-month').textContent =
+      '· ' + now.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }) +
+      (allPlanFact.asOf ? ' · учтено дней: ' + allPlanFact.elapsed + ' из ' + allPlanFact.daysInMonth : '');
+  } else if (fwrap) {
+    fwrap.innerHTML = '';
+  }
+
+  // ── Выручка (старый вариант по кассе: факт сейчас + прогноз к концу месяца) ──
+  if (usePF) {
+    // уже показано выше
+  } else if (hasRev) {
     const fact     = sumCashRev(filterCashRows(ms, td));
     const forecast = elapsed > 0 ? fact / elapsed * daysInMonth : 0;
     const pctFact  = Math.round(fact / p.revenue * 100);
@@ -1111,6 +1159,204 @@ function renderPlan() {
   } else {
     cwrap.style.display = 'none';
   }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ПЛАН / ФАКТ ПО НАПРАВЛЕНИЯМ + НАКОПИТЕЛЬНЫЙ ПЛАН
+// Цифры считает сервер (getPlanFact в apps_script.gs), здесь только отрисовка.
+// Факт — оказанные услуги («Операции»): план Q4 построен на услугах, а касса на 3–5% выше
+// (пополнения депозитов и сертификаты — предоплата), её с этим планом сравнивать нельзя.
+// ════════════════════════════════════════════════════════════════════════════
+const PF_MONTH_SHORT = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+
+function pfPct(v) { return v == null ? '—' : Math.round(v) + '%'; }
+
+function renderPlanFact(pf, el) {
+  const t = pf.total;
+  const title = '<span class="plan-title">Выручка центра · оказанные услуги</span>';
+
+  if (!pf.asOf) {
+    el.innerHTML = '<div class="plan-card"><div class="plan-head">' + title + '</div>' +
+      '<div class="plan-sub" style="margin-top:6px">План месяца ' + fmtMoney(t.plan) +
+      '. Месяц только начался — данных для сравнения пока нет.</div></div>';
+    return;
+  }
+
+  const dd   = pf.asOf.slice(8, 10) + '.' + pf.asOf.slice(5, 7);
+  const cls  = planClass(t.pctCum);
+  const fill = Math.min(t.pctMonth, 100);
+  const mark = t.plan > 0 ? Math.min(t.cumPlan / t.plan * 100, 100) : 0;
+
+  const cash = sumCashRev(filterCashRows(pf.month + '-01', pf.asOf));
+  const cashNote = t.fact > 0
+    ? ' Касса за тот же период — ' + fmtMoney(cash) + ' (' + (cash >= t.fact ? '+' : '') + Math.round((cash / t.fact - 1) * 100) +
+      '% к услугам: касса и оказанные услуги расходятся по времени — предоплаты, пополнения, сертификаты). План считается по услугам.'
+    : '';
+  const refTxt = pf.weightsUniform
+    ? 'равномерно (нет истории по дням недели)'
+    : 'с учётом дня недели (по ' + pf.refMonths.map(m => PF_MONTH_SHORT[+m.slice(5, 7) - 1]).join(', ') + ')';
+
+  let html = '<div class="plan-card">' +
+    '<div class="plan-head">' + title + '<span class="plan-sub">на ' + dd + ' · план месяца ' + fmtMoney(t.plan) + '</span></div>' +
+    '<div class="plan-ends">' +
+      '<span><b class="plan-stat-val ' + cls + '">' + pfPct(t.pctCum) + '</b> <span class="plan-stat-lbl">выполнение плана на дату</span></span>' +
+      '<span style="text-align:right"><b class="plan-stat-val" style="color:#1e293b">' + pfPct(t.pctMonth) + '</b> <span class="plan-stat-lbl">от плана месяца</span></span>' +
+    '</div>' +
+    '<div class="plan-bar"><div class="plan-bar-fill ' + cls + '" style="width:' + fill + '%"></div>' +
+      '<div class="plan-mark" style="left:' + mark + '%" title="План на ' + dd + '"></div></div>' +
+    '<div class="plan-sub"><span>Факт ' + fmtMoney(t.fact) + ' · План на ' + dd + ' ' + fmtMoney(t.cumPlan) + '</span>' +
+      '<span style="float:right">Прогноз по темпу: ' + (t.forecast == null ? '—' : fmtMoney(t.forecast)) + '</span></div>' +
+    '<div class="plan-note">Чёрная метка на шкале — где должна быть выручка на ' + dd + '. План по дням: ' + refTxt +
+      '; субаренда кафе — по графику.' + cashNote + '</div>' +
+  '</div>';
+
+  if (pf.directions && pf.directions.length) {
+    const row = (name, d, bold) => {
+      const c = planClass(d.pctCum);
+      return '<tr' + (bold ? ' style="background:#f8fafc"' : '') + '><td><b>' + name + '</b>' +
+        (d.scheduled ? ' <span style="color:#94a3b8;font-size:10px">по графику</span>' : '') + '</td>' +
+        '<td class="num" style="color:#64748b">' + fmtMoney(d.plan) + '</td>' +
+        '<td class="num" style="color:#64748b">' + fmtMoney(d.cumPlan) + '</td>' +
+        '<td class="num fw7">' + fmtMoney(d.fact) + '</td>' +
+        '<td class="num"><span class="plan-mini"><span class="' + c + '" style="width:' + Math.min(d.pctCum || 0, 100) + '%"></span></span><b class="' + c + '">' + pfPct(d.pctCum) + '</b></td>' +
+        '<td class="num" style="color:#64748b">' + pfPct(d.pctMonth) + '</td></tr>';
+    };
+    let rows = '';
+    pf.directions.forEach(d => { rows += row(d.name, d, false); });
+    rows += row('ИТОГО', { plan: t.plan, cumPlan: t.cumPlan, fact: t.fact, pctCum: t.pctCum, pctMonth: t.pctMonth }, true);
+    html += '<p class="block-label plan-dir">Направления · план и факт на ' + dd + '</p>' +
+      '<div class="plan-card" style="padding:6px 10px;overflow-x:auto"><table class="dtable"><thead><tr>' +
+      '<th>Направление</th><th class="num">План месяца</th><th class="num">План на ' + dd + '</th>' +
+      '<th class="num">Факт</th><th class="num">Выполнение</th><th class="num">От плана месяца</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+  el.innerHTML = html;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ВЫРУЧКА НАРАСТАЮЩИМ ИТОГОМ: этот месяц к прошлым за то же число дней
+// Сравнение «с 1 по N» — N это число прошедших дней текущего месяца (до вчера включительно).
+// ════════════════════════════════════════════════════════════════════════════
+let momBasis = 'cash';     // cash — касса (Поступления, как «Выручка» на дашборде) | ops — оказанные услуги
+let _momWired = false;
+
+function momYmAdd(ym, k) {
+  const y = +ym.slice(0, 4), m = +ym.slice(5, 7);
+  const d = new Date(y, m - 1 + k, 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+function momDays(ym) { return new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate(); }
+function momDow(ymd) { return (new Date(+ymd.slice(0, 4), +ymd.slice(5, 7) - 1, +ymd.slice(8, 10)).getDay() + 6) % 7; }
+
+// План нарастающим итогом по дням месяца (как на сервере: основная часть — по весам дней недели,
+// субаренда — равномерно). Только для режима «Услуги».
+function momPlanCurve(pf) {
+  if (!pf || !pf.directions || !pf.directions.length) return null;
+  const sub  = (pf.directions.find(d => d.scheduled) || { plan: 0 }).plan;
+  const rest = pf.total.plan - sub;
+  let totW = 0;
+  for (let d = 1; d <= pf.daysInMonth; d++) totW += pf.weights[momDow(pf.month + '-' + String(d).padStart(2, '0'))];
+  const out = []; let cumW = 0;
+  for (let d = 1; d <= pf.daysInMonth; d++) {
+    cumW += pf.weights[momDow(pf.month + '-' + String(d).padStart(2, '0'))];
+    out.push(Math.round(rest * cumW / totW + sub * d / pf.daysInMonth));
+  }
+  return out;
+}
+
+function renderMom() {
+  const sec = document.getElementById('mom-section');
+  if (!sec) return;
+
+  if (!_momWired) {
+    _momWired = true;
+    document.querySelectorAll('#mom-basis .dyn-btn').forEach(b => b.addEventListener('click', () => {
+      momBasis = b.dataset.basis;
+      document.querySelectorAll('#mom-basis .dyn-btn').forEach(x => x.classList.toggle('active', x === b));
+      try { renderMom(); } catch (e) { console.error('renderMom', e); }
+    }));
+  }
+
+  const ym = (allPlanFact && allPlanFact.month) || todayStr().slice(0, 7);
+  const td = todayStr();
+
+  // N — по какое число сравниваем: план/факт сервера, иначе последний день с данными (не сегодня)
+  let N = null;
+  if (allPlanFact && allPlanFact.month === ym && allPlanFact.asOf) {
+    N = +allPlanFact.asOf.slice(8, 10);
+  } else {
+    const ds = allCashRows.filter(r => r.date.slice(0, 7) === ym && r.date < td).map(r => r.date).sort();
+    if (ds.length) N = +ds[ds.length - 1].slice(8, 10);
+  }
+  if (!N) { sec.style.display = 'none'; return; }
+  sec.style.display = 'block';
+
+  const months = [0, -1, -2, -3].map(k => momYmAdd(ym, k));
+  const src = momBasis === 'cash' ? allCashRows : allRows;
+  const val = momBasis === 'cash' ? (r => parseFloat(r.sum) || 0) : (r => parseFloat(r.revenue) || 0);
+
+  const daily = {};
+  months.forEach(m => { daily[m] = Array(momDays(m) + 1).fill(0); });
+  src.forEach(r => {
+    const m = r.date.slice(0, 7);
+    if (daily[m]) daily[m][+r.date.slice(8, 10)] += val(r);
+  });
+  const cum = {};
+  months.forEach(m => { let s = 0; cum[m] = daily[m].map((v, i) => (i === 0 ? 0 : (s += v))); });
+
+  const mLabel = m => PF_MONTH_SHORT[+m.slice(5, 7) - 1] + ' ' + m.slice(2, 4);
+  const upTo   = m => cum[m][Math.min(N, momDays(m))];
+  const cur    = upTo(months[0]);
+
+  setEl('mom-sub', '1–' + N + ' ' + PF_MONTH_SHORT[+ym.slice(5, 7) - 1] + ' к прошлым месяцам · ' +
+        (momBasis === 'cash' ? 'касса (поступления)' : 'оказанные услуги'));
+
+  let rows = '';
+  months.forEach((m, i) => {
+    const v = upTo(m);
+    let delta = '—';
+    if (i > 0) {
+      if (v > 0) {
+        const dp = (cur / v - 1) * 100;
+        delta = '<span class="' + (dp >= 0 ? 'mom-delta-pos' : 'mom-delta-neg') + '">' + (dp >= 0 ? '+' : '') + Math.round(dp) + '%</span>';
+      }
+    }
+    const full = i === 0 ? '—' : fmtMoney(cum[m][momDays(m)]);
+    rows += '<tr' + (i === 0 ? ' style="background:#eff6ff"' : '') + '><td><b>' + mLabel(m) + '</b> · 1–' + Math.min(N, momDays(m)) + '</td>' +
+      '<td class="num fw7">' + fmtMoney(v) + '</td>' +
+      '<td class="num">' + delta + '</td>' +
+      '<td class="num" style="color:#64748b">' + full + '</td></tr>';
+  });
+  document.getElementById('mom-table').innerHTML =
+    '<div style="overflow-x:auto"><table class="dtable"><thead><tr><th>Период</th><th class="num">Выручка</th>' +
+    '<th class="num">Текущий месяц к нему</th><th class="num">Весь месяц</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+
+  // График: нарастающий итог по числам месяца. Текущий месяц — только до N, прошлые — целиком.
+  const maxDays = Math.max(...months.map(momDays));
+  const labels = Array.from({ length: maxDays }, (_, i) => i + 1);
+  const colors = ['#2563eb', '#f59e0b', '#10b981', '#a78bfa'];
+  const datasets = months.map((m, i) => ({
+    label: mLabel(m),
+    data: labels.map(d => (d > momDays(m) ? null : (i === 0 && d > N ? null : cum[m][d]))),
+    borderColor: colors[i], backgroundColor: colors[i],
+    borderWidth: i === 0 ? 3 : 1.6, pointRadius: 0, pointHoverRadius: 4, tension: 0.15, spanGaps: false,
+  }));
+  if (momBasis === 'ops' && allPlanFact && allPlanFact.month === ym) {
+    const curve = momPlanCurve(allPlanFact);
+    if (curve) datasets.push({
+      label: 'План (накопительно)', data: labels.map(d => (d <= curve.length ? curve[d - 1] : null)),
+      borderColor: '#1e293b', backgroundColor: '#1e293b', borderDash: [6, 4], borderWidth: 1.6,
+      pointRadius: 0, tension: 0.1,
+    });
+  }
+  mkChart('c-mom', 'line', labels, datasets, {
+    interaction: { mode: 'index', intersect: false },
+    plugins: { tooltip: { callbacks: { label: c => ' ' + c.dataset.label + ': ' + fmtMoney(c.parsed.y) } } },
+    scales: {
+      x: { title: { display: true, text: 'число месяца', font: { size: 10 } }, grid: { display: false } },
+      y: { ticks: { callback: v => (v / 1e6).toFixed(1) + ' М' }, beginAtZero: true },
+    },
+  });
 }
 
 // Сопоставление имени: план по фамилии («Васильев»), в «Операции» полное имя
