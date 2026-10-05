@@ -617,7 +617,7 @@ const SUB_LABEL = {
   t_ind: 'Персональная', t_pair: 'Парная', t_pair_ofp: 'Парная ОФП',
   t_ofp: 'Персональная ОФП',
   t_split3: 'Сплит 3', t_split4: 'Сплит 4',
-  t_group: 'Групповая (новички)', t_trial: 'Пробное / компл.',
+  t_group: 'Групповая', t_trial: 'Пробное / компл.',
   t_kids_trial: 'Детское пробное', t_kids_68: 'Детская 6-8', t_kids_911: 'Детская 9-11',
   t_kids_1214: 'Детская 12-14', t_kids: 'Детская группа',
   club: 'Клубный турнир', ext: 'Внешний турнир', inv_1c: 'Инвентарь',
@@ -1246,7 +1246,8 @@ function renderDynamics() {
 function calcUtil(rows, from, to) {
   const days  = Math.round((new Date(to + 'T12:00:00') - new Date(from + 'T12:00:00')) / 86400000) + 1;
   const avail = COURTS * WORK_HRS * days;
-  const used  = rows.filter(r => r.category !== 'inventory' && r.category !== 'wellness' && courtTypeOf(r) !== 'center').reduce((s, r) => s + r.duration, 0);
+  // Комплиментарные брони (isCompl) в утилизацию не входят; клининг и «тренировки тренеров» отсекаются ещё при импорте.
+  const used  = rows.filter(r => !r.isCompl && r.category !== 'inventory' && r.category !== 'wellness' && courtTypeOf(r) !== 'center').reduce((s, r) => s + r.duration, 0);
   return {
     pct:   avail > 0 ? (used / avail * 100) : 0,
     used:  Math.round(used * 10) / 10,
@@ -1257,7 +1258,7 @@ function calcUtil(rows, from, to) {
 function calcCenterUtil(rows, from, to) {
   const days  = Math.round((new Date(to + 'T12:00:00') - new Date(from + 'T12:00:00')) / 86400000) + 1;
   const avail = WORK_HRS * days; // 1 корт
-  const used  = rows.filter(r => courtTypeOf(r) === 'center').reduce((s, r) => s + r.duration, 0);
+  const used  = rows.filter(r => !r.isCompl && courtTypeOf(r) === 'center').reduce((s, r) => s + r.duration, 0);
   return {
     pct:   avail > 0 ? (used / avail * 100) : 0,
     used:  Math.round(used * 10) / 10,
@@ -1371,7 +1372,7 @@ function renderCourtTypes(rows, cashRows) {
   const rev = types.map(t => Math.round(cashCourts.filter(r => r.subType === t).reduce((s, r) => s + r.sum, 0)));
 
   // Часы — из Импорт_1С (факт оказанных услуг)
-  const opsCourts = rows.filter(r => r.category === 'court');
+  const opsCourts = rows.filter(r => r.category === 'court' && !r.isCompl);
   const hrs = types.map(t => Math.round(opsCourts.filter(r => r.subType === t).reduce((s, r) => s + r.duration, 0) * 10) / 10);
 
   mkChart('c-court-types', 'bar', types.map(t => SUB_LABEL[t]),
@@ -1431,7 +1432,7 @@ function buildUtilGrid(rows, capacity, weekdayCounts) {
   for (let h = HOUR_START; h < HOUR_START + WORK_HRS; h++) occ[h] = Array(7).fill(0);
 
   rows.forEach(r => {
-    if (!r.time) return;
+    if (!r.time || r.isCompl) return;   // комплиментарные брони в загрузку не входят
     const startH = parseInt(r.time.split(':')[0], 10);
     const dow    = (new Date(r.date + 'T12:00:00').getDay() + 6) % 7;
     const dur    = Math.max(1, Math.round(r.duration) || 1);
@@ -1521,7 +1522,7 @@ function renderCourtHeatmap() {
 // ════════════════════════════════════════════════════════════════════════════
 function calcTypeUtil(rows, type, days) {
   const avail = COURT_TYPE_COUNT[type] * WORK_HRS * days;
-  const used  = rows.filter(r => courtTypeOf(r) === type).reduce((s, r) => s + r.duration, 0);
+  const used  = rows.filter(r => !r.isCompl && courtTypeOf(r) === type).reduce((s, r) => s + r.duration, 0);
   return {
     pct:   avail > 0 ? (used / avail * 100) : 0,
     used:  Math.round(used * 10) / 10,
@@ -1563,7 +1564,7 @@ function bucketIndexOf(h) {
 }
 
 function calcTypeBucketUtil(rows, type, days) {
-  const typeRows = rows.filter(r => courtTypeOf(r) === type);
+  const typeRows = rows.filter(r => !r.isCompl && courtTypeOf(r) === type);   // комплиментарные в загрузку не входят
   const occ = TIME_BUCKETS.map(() => 0);
   typeRows.forEach(r => {
     if (!r.time) return;
@@ -1742,7 +1743,7 @@ function renderEfficiency(rows, cashRows, from, to) {
   setEl('kpi-avgcheck-sub', payCount + ' платежей');
 
   // Пиковые часы — загрузка кортов 18:00+ (из SHEET_OPS)
-  const peakRows  = rows.filter(r => r.category !== 'inventory' && r.category !== 'wellness' && courtTypeOf(r) !== 'center');
+  const peakRows  = rows.filter(r => !r.isCompl && r.category !== 'inventory' && r.category !== 'wellness' && courtTypeOf(r) !== 'center');
   const peakUsed  = peakRows.filter(r => parseInt((r.time || '').split(':')[0], 10) >= 18)
                             .reduce((s, r) => s + r.duration, 0);
   const days      = Math.round((new Date(to + 'T12:00:00') - new Date(from + 'T12:00:00')) / 86400000) + 1;
